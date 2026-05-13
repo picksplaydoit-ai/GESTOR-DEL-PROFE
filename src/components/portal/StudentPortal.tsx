@@ -13,11 +13,14 @@ import {
   ChevronRight,
   AlertCircle,
   Loader2,
-  Lock
+  Lock,
+  Filter,
+  Search
 } from 'lucide-react';
 import { calculateGrades, StudentGradeResult } from '../../lib/grades';
 import { cn, formatGrade } from '../../lib/utils';
 import { Student, Group, Rubric, RubricCriterion, Activity, Submission, CourseMaterial, AttendanceStatus } from '../../types';
+import { formatLocalDate, getMonthName, getMonthRange, getQuarterRange } from '../../lib/date';
 
 export function StudentPortal() {
   const [loading, setLoading] = useState(false);
@@ -26,6 +29,23 @@ export function StudentPortal() {
   const [enrollmentId, setEnrollmentId] = useState('');
   const [portalData, setPortalData] = useState<any>(null);
   const [grades, setGrades] = useState<StudentGradeResult | null>(null);
+
+  // Attendance Filters
+  const [attFilterType, setAttFilterType] = useState<'all' | 'month' | 'quarter' | 'range'>('all');
+  const [selectedMonth, setSelectedMonth] = useState(new Date().getMonth());
+  const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
+  const [selectedQuarter, setSelectedQuarter] = useState(Math.floor(new Date().getMonth() / 3) + 1);
+  const [customRange, setCustomRange] = useState({ start: '', end: '' });
+  const [attendanceReport, setAttendanceReport] = useState<{
+    records: any[],
+    present: number,
+    absent: number,
+    late: number,
+    justified: number,
+    total: number,
+    percentage: number,
+    periodLabel: string
+  }>({ records: [], present: 0, absent: 0, late: 0, justified: 0, total: 0, percentage: 0, periodLabel: 'Historial completo' });
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -87,6 +107,61 @@ export function StudentPortal() {
     } finally {
       setLoading(false);
     }
+  };
+
+  useEffect(() => {
+    if (portalData?.attendance) {
+      applyAttendanceFilter();
+    }
+  }, [portalData, attFilterType, selectedMonth, selectedYear, selectedQuarter, customRange]);
+
+  const applyAttendanceFilter = () => {
+    const { attendance } = portalData;
+    let startDate: string | null = null;
+    let endDate: string | null = null;
+    let periodLabel = 'Historial completo';
+
+    if (attFilterType === 'month') {
+      const range = getMonthRange(selectedYear, selectedMonth);
+      startDate = range.startDate;
+      endDate = range.endDate;
+      periodLabel = `${getMonthName(selectedMonth)} ${selectedYear}`;
+    } else if (attFilterType === 'quarter') {
+      const range = getQuarterRange(selectedYear, selectedQuarter);
+      startDate = range.startDate;
+      endDate = range.endDate;
+      periodLabel = `Trimestre ${selectedQuarter} (${selectedYear})`;
+    } else if (attFilterType === 'range') {
+      startDate = customRange.start;
+      endDate = customRange.end;
+      periodLabel = `${startDate || '?'} al ${endDate || '?'}`;
+    }
+
+    const filtered = attendance.filter((a: any) => {
+      if (!startDate || !endDate) return true;
+      const sessionDate = a.attendance_sessions?.date;
+      return sessionDate >= startDate && sessionDate <= endDate;
+    }).sort((a: any, b: any) => b.attendance_sessions.date.localeCompare(a.attendance_sessions.date));
+
+    const total = filtered.length;
+    const present = filtered.filter((r: any) => r.status === 'present').length;
+    const late = filtered.filter((r: any) => r.status === 'late').length;
+    const justified = filtered.filter((r: any) => r.status === 'justified').length;
+    const absent = filtered.filter((r: any) => r.status === 'absent').length;
+
+    const valueSum = filtered.reduce((sum: number, r: any) => sum + r.value, 0);
+    const percentage = total > 0 ? (valueSum / total) * 100 : 100;
+
+    setAttendanceReport({
+      records: filtered,
+      present,
+      absent,
+      late,
+      justified,
+      total,
+      percentage,
+      periodLabel
+    });
   };
 
   useEffect(() => {
@@ -290,6 +365,173 @@ export function StudentPortal() {
                 </div>
               );
             })}
+          </div>
+        </section>
+
+        {/* Attendance History */}
+        <section>
+          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6">
+            <div className="flex items-center gap-3">
+              <Calendar className="w-5 h-5 text-green-600" />
+              <h3 className="text-xl font-black text-slate-900">Historial de Asistencia</h3>
+            </div>
+            
+            <div className="flex flex-wrap items-center gap-2">
+              <div className="flex bg-slate-200/50 p-1 rounded-xl">
+                 {(['all', 'month', 'quarter', 'range'] as const).map(type => (
+                   <button
+                    key={type}
+                    onClick={() => setAttFilterType(type)}
+                    className={cn(
+                      "px-3 py-1 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all",
+                      attFilterType === type ? "bg-white text-blue-600 shadow-sm" : "text-slate-500 hover:text-slate-700"
+                    )}
+                   >
+                     {type === 'all' ? 'Todo' : type === 'month' ? 'Mes' : type === 'quarter' ? 'Trim' : 'Rango'}
+                   </button>
+                 ))}
+              </div>
+
+              {attFilterType === 'month' && (
+                <div className="flex items-center gap-2">
+                   <select 
+                    value={selectedMonth} 
+                    onChange={(e) => setSelectedMonth(Number(e.target.value))}
+                    className="bg-white border border-slate-200 rounded-lg px-2 py-1 text-xs font-bold outline-none focus:ring-2 focus:ring-blue-500"
+                   >
+                     {Array.from({length: 12}).map((_, i) => (
+                       <option key={i} value={i}>{getMonthName(i)}</option>
+                     ))}
+                   </select>
+                </div>
+              )}
+
+              {attFilterType === 'quarter' && (
+                <div className="flex items-center gap-2">
+                   <select 
+                    value={selectedQuarter} 
+                    onChange={(e) => setSelectedQuarter(Number(e.target.value))}
+                    className="bg-white border border-slate-200 rounded-lg px-2 py-1 text-xs font-bold outline-none focus:ring-2 focus:ring-blue-500"
+                   >
+                     {[1, 2, 3, 4].map(q => <option key={q} value={q}>T{q}</option>)}
+                   </select>
+                </div>
+              )}
+
+              {attFilterType === 'range' && (
+                <div className="flex items-center gap-1">
+                   <input 
+                    type="date"
+                    value={customRange.start}
+                    onChange={(e) => setCustomRange({...customRange, start: e.target.value})}
+                    className="bg-white border border-slate-200 rounded-lg px-2 py-1 text-xs font-bold outline-none"
+                   />
+                   <input 
+                    type="date"
+                    value={customRange.end}
+                    onChange={(e) => setCustomRange({...customRange, end: e.target.value})}
+                    className="bg-white border border-slate-200 rounded-lg px-2 py-1 text-xs font-bold outline-none"
+                   />
+                </div>
+              )}
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-6">
+             <div className="bg-white p-4 rounded-3xl border border-slate-100 shadow-sm text-center">
+                <p className="text-[10px] font-black text-slate-400 uppercase mb-1">Clases</p>
+                <p className="text-xl font-black text-slate-900">{attendanceReport.total}</p>
+             </div>
+             <div className="bg-white p-4 rounded-3xl border border-slate-100 shadow-sm text-center">
+                <p className="text-[10px] font-black text-green-500 uppercase mb-1">Asistencias</p>
+                <p className="text-xl font-black text-green-600">{attendanceReport.present}</p>
+             </div>
+             <div className="bg-white p-4 rounded-3xl border border-slate-100 shadow-sm text-center">
+                <p className="text-[10px] font-black text-red-500 uppercase mb-1">Faltas</p>
+                <p className="text-xl font-black text-red-600">{attendanceReport.absent}</p>
+             </div>
+             <div className="bg-white p-4 rounded-3xl border border-slate-100 shadow-sm text-center">
+                <p className="text-[10px] font-black text-amber-500 uppercase mb-1">Retardos</p>
+                <p className="text-xl font-black text-amber-600">{attendanceReport.late}</p>
+             </div>
+             <div className="bg-white p-4 rounded-3xl border border-slate-100 shadow-sm text-center hidden md:block">
+                <p className="text-[10px] font-black text-blue-500 uppercase mb-1">Periodo %</p>
+                <p className="text-xl font-black text-blue-600">{Math.round(attendanceReport.percentage)}%</p>
+             </div>
+          </div>
+
+          <div className="bg-white rounded-[2rem] border border-slate-200 overflow-hidden shadow-sm">
+             <div className="overflow-x-auto">
+                {attendanceReport.records.length > 0 ? (
+                  <>
+                    <table className="w-full text-left hidden md:table">
+                      <thead>
+                        <tr className="bg-slate-50 border-b border-slate-200">
+                          <th className="px-8 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Fecha</th>
+                          <th className="px-8 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Día</th>
+                          <th className="px-8 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center">Estatus</th>
+                          <th className="px-8 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center">Valor</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100">
+                        {attendanceReport.records.map((r, i) => (
+                          <tr key={i} className="hover:bg-slate-50 transition-colors">
+                            <td className="px-8 py-4">
+                               <p className="font-bold text-slate-900">{formatLocalDate(r.attendance_sessions.date, "d 'de' MMMM, yyyy")}</p>
+                            </td>
+                            <td className="px-8 py-4">
+                               <p className="text-sm font-bold text-slate-500 capitalize">{formatLocalDate(r.attendance_sessions.date, "EEEE")}</p>
+                            </td>
+                            <td className="px-8 py-4 text-center">
+                               <span className={cn(
+                                 "px-3 py-1 rounded-full text-[10px] font-black uppercase border",
+                                 r.status === 'present' ? "bg-green-50 text-green-700 border-green-100" :
+                                 r.status === 'absent' ? "bg-red-50 text-red-700 border-red-100" :
+                                 r.status === 'late' ? "bg-amber-50 text-amber-700 border-amber-100" :
+                                 "bg-blue-50 text-blue-700 border-blue-100"
+                               )}>
+                                 {r.status === 'present' ? 'Presente' : r.status === 'absent' ? 'Falta' : r.status === 'late' ? 'Retardo' : 'Justificada'}
+                               </span>
+                            </td>
+                            <td className="px-8 py-4 text-center font-bold text-slate-600">
+                               {r.value}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                    
+                    {/* Mobile Cards */}
+                    <div className="md:hidden divide-y divide-slate-100">
+                      {attendanceReport.records.map((r, i) => (
+                        <div key={i} className="p-6 flex items-center justify-between">
+                           <div>
+                              <p className="font-bold text-slate-900">{formatLocalDate(r.attendance_sessions.date, "d 'de' MMM")}</p>
+                              <p className="text-[10px] font-bold text-slate-400 uppercase">{formatLocalDate(r.attendance_sessions.date, "EEEE")}</p>
+                           </div>
+                           <div className="flex items-center gap-3">
+                              <span className={cn(
+                                 "px-3 py-1 rounded-full text-[10px] font-black uppercase border",
+                                 r.status === 'present' ? "bg-green-50 text-green-700 border-green-100" :
+                                 r.status === 'absent' ? "bg-red-50 text-red-700 border-red-100" :
+                                 r.status === 'late' ? "bg-amber-50 text-amber-700 border-amber-100" :
+                                 "bg-blue-50 text-blue-700 border-blue-100"
+                               )}>
+                                 {r.status === 'present' ? 'Pres.' : r.status === 'absent' ? 'Falta' : r.status === 'late' ? 'Ret.' : 'Just.'}
+                               </span>
+                               <span className="text-xs font-black text-slate-400">v:{r.value}</span>
+                           </div>
+                        </div>
+                      ))}
+                    </div>
+                  </>
+                ) : (
+                  <div className="p-12 text-center">
+                    <Calendar className="w-12 h-12 text-slate-200 mx-auto mb-4" />
+                    <p className="text-slate-500 font-bold">No hay registros para este periodo.</p>
+                  </div>
+                )}
+             </div>
           </div>
         </section>
 
