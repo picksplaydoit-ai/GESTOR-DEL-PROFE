@@ -9,7 +9,9 @@ import {
   XCircle,
   FileSpreadsheet,
   AlertCircle,
-  ChevronLeft
+  ChevronLeft,
+  Edit2,
+  AlertTriangle
 } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { useAppStore } from '../../store';
@@ -23,8 +25,12 @@ export function StudentsManager() {
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [editingStudent, setEditingStudent] = useState<Student | null>(null);
   const [importPreview, setImportPreview] = useState<ImportStudent[] | null>(null);
   const [importErrors, setImportErrors] = useState<string[]>([]);
+  const [selectedStudents, setSelectedStudents] = useState<string[]>([]);
+  const [isDeleteAllModalOpen, setIsDeleteAllModalOpen] = useState(false);
+  const [confirmDeleteText, setConfirmDeleteText] = useState('');
 
   interface ImportStudent {
     first_name: string;
@@ -186,6 +192,70 @@ export function StudentsManager() {
     }
   };
 
+  const handleDeleteStudent = async (id: string) => {
+    if (!confirm('¿Seguro que deseas eliminar este alumno? Se eliminarán sus calificaciones, asistencias y pertenencia a equipos.')) return;
+    setLoading(true);
+    try {
+      const { error } = await supabase.from('students').delete().eq('id', id);
+      if (error) throw error;
+      fetchStudents();
+      setSelectedStudents(prev => prev.filter(sId => sId !== id));
+    } catch (error) {
+      console.error('Error deleting student:', error);
+      alert('Error al eliminar el alumno.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleDeleteSelected = async () => {
+    if (!confirm(`¿Seguro que deseas eliminar a los ${selectedStudents.length} alumnos seleccionados?`)) return;
+    setLoading(true);
+    try {
+      const { error } = await supabase.from('students').delete().in('id', selectedStudents);
+      if (error) throw error;
+      fetchStudents();
+      setSelectedStudents([]);
+    } catch (error) {
+      console.error('Error deleting selected students:', error);
+      alert('Error al eliminar los alumnos seleccionados.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleDeleteAll = async () => {
+    if (confirmDeleteText !== 'ELIMINAR') return;
+    setLoading(true);
+    try {
+      const { error } = await supabase.from('students').delete().eq('group_id', activeGroup.id);
+      if (error) throw error;
+      fetchStudents();
+      setSelectedStudents([]);
+      setIsDeleteAllModalOpen(false);
+      setConfirmDeleteText('');
+    } catch (error) {
+      console.error('Error deleting all students:', error);
+      alert('Error al eliminar todos los alumnos.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const toggleSelectAll = () => {
+    if (selectedStudents.length === filteredStudents.length) {
+      setSelectedStudents([]);
+    } else {
+      setSelectedStudents(filteredStudents.map(s => s.id));
+    }
+  };
+
+  const toggleSelectStudent = (id: string) => {
+    setSelectedStudents(prev => 
+      prev.includes(id) ? prev.filter(s => s !== id) : [...prev, id]
+    );
+  };
+
   if (!activeGroup) return null;
 
   const filteredStudents = students.filter(s => 
@@ -222,13 +292,23 @@ export function StudentsManager() {
         </div>
         
         <div className="flex gap-3 w-full md:w-auto">
+          <button 
+            onClick={() => setIsDeleteAllModalOpen(true)}
+            className="flex-1 md:flex-none flex items-center justify-center gap-2 px-5 py-3 bg-red-50 text-red-600 rounded-xl font-semibold hover:bg-red-100 transition-all shadow-sm border border-red-100"
+          >
+            <Trash2 className="w-5 h-5" />
+            <span>Eliminar Todo</span>
+          </button>
           <label className="flex-1 md:flex-none flex items-center justify-center gap-2 px-5 py-3 bg-white border border-slate-200 rounded-xl font-semibold text-slate-600 hover:bg-slate-50 transition-all cursor-pointer shadow-sm">
             <Upload className="w-5 h-5" />
             <span>Importar CSV</span>
             <input type="file" accept=".csv" onChange={handleFileUpload} className="hidden" />
           </label>
           <button 
-            onClick={() => setIsModalOpen(true)}
+            onClick={() => {
+              setEditingStudent(null);
+              setIsModalOpen(true);
+            }}
             className="flex-1 md:flex-none flex items-center justify-center gap-2 px-5 py-3 bg-blue-600 text-white rounded-xl font-semibold hover:bg-blue-700 transition-all shadow-lg shadow-blue-200"
           >
             <UserPlus className="w-5 h-5" />
@@ -236,6 +316,30 @@ export function StudentsManager() {
           </button>
         </div>
       </div>
+
+      {selectedStudents.length > 0 && (
+        <div className="bg-blue-600 text-white px-6 py-4 rounded-2xl flex items-center justify-between shadow-lg shadow-blue-100 animate-in slide-in-from-top-4">
+          <div className="flex items-center gap-4">
+            <CheckCircle2 className="w-6 h-6" />
+            <p className="font-bold">{selectedStudents.length} alumnos seleccionados</p>
+          </div>
+          <div className="flex gap-3">
+            <button 
+              onClick={() => setSelectedStudents([])}
+              className="px-4 py-2 text-sm font-bold hover:bg-white/10 rounded-lg transition-colors"
+            >
+              Cancelar
+            </button>
+            <button 
+              onClick={handleDeleteSelected}
+              className="bg-white text-red-600 px-6 py-2 rounded-lg text-sm font-black shadow-lg hover:bg-red-50 transition-all flex items-center gap-2"
+            >
+              <Trash2 className="w-4 h-4" />
+              Eliminar Seleccionados
+            </button>
+          </div>
+        </div>
+      )}
 
       {importPreview && (
         <div className={cn(
@@ -327,6 +431,14 @@ export function StudentsManager() {
         <table className="w-full text-left">
           <thead>
             <tr className="bg-slate-50 border-b border-slate-200">
+              <th className="px-6 py-4 w-10">
+                <input 
+                  type="checkbox" 
+                  checked={selectedStudents.length > 0 && selectedStudents.length === filteredStudents.length}
+                  onChange={toggleSelectAll}
+                  className="w-5 h-5 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                />
+              </th>
               <th className="px-6 py-4 font-bold text-slate-600 text-sm">ID Público</th>
               <th className="px-6 py-4 font-bold text-slate-600 text-sm">Nombre Completo</th>
               <th className="px-6 py-4 font-bold text-slate-600 text-sm">Matrícula</th>
@@ -338,12 +450,12 @@ export function StudentsManager() {
             {loading ? (
               [1, 2, 3].map(i => (
                 <tr key={i} className="animate-pulse">
-                  <td colSpan={5} className="px-6 py-4 h-16 bg-slate-50/50" />
+                  <td colSpan={6} className="px-6 py-4 h-16 bg-slate-50/50" />
                 </tr>
               ))
             ) : filteredStudents.length === 0 ? (
               <tr>
-                <td colSpan={5} className="px-6 py-12 text-center">
+                <td colSpan={6} className="px-6 py-12 text-center">
                   <div className="flex flex-col items-center text-slate-400">
                     <Search className="w-12 h-12 mb-3 opacity-20" />
                     <p className="font-medium text-slate-500">No se encontraron alumnos</p>
@@ -353,7 +465,15 @@ export function StudentsManager() {
               </tr>
             ) : (
               filteredStudents.map((student) => (
-                <tr key={student.id} className="hover:bg-slate-50/80 transition-colors">
+                <tr key={student.id} className={cn("hover:bg-slate-50/80 transition-colors", selectedStudents.includes(student.id) && "bg-blue-50/30")}>
+                  <td className="px-6 py-4">
+                    <input 
+                      type="checkbox" 
+                      checked={selectedStudents.includes(student.id)}
+                      onChange={() => toggleSelectStudent(student.id)}
+                      className="w-5 h-5 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                    />
+                  </td>
                   <td className="px-6 py-4 text-sm font-mono text-slate-500">{student.student_public_id}</td>
                   <td className="px-6 py-4">
                     <p className="font-bold text-slate-900">{student.first_name} {student.last_name}</p>
@@ -370,9 +490,23 @@ export function StudentsManager() {
                     </span>
                   </td>
                   <td className="px-6 py-4">
-                    <button className="p-2 text-slate-400 hover:text-red-500 transition-colors">
-                      <Trash2 className="w-5 h-5" />
-                    </button>
+                    <div className="flex gap-2">
+                       <button 
+                        onClick={() => {
+                          setEditingStudent(student);
+                          setIsModalOpen(true);
+                        }}
+                        className="p-2 text-slate-400 hover:text-blue-600 transition-colors"
+                      >
+                        <Edit2 className="w-5 h-5" />
+                      </button>
+                      <button 
+                        onClick={() => handleDeleteStudent(student.id)}
+                        className="p-2 text-slate-400 hover:text-red-500 transition-colors"
+                      >
+                        <Trash2 className="w-5 h-5" />
+                      </button>
+                    </div>
                   </td>
                 </tr>
               ))
@@ -381,12 +515,63 @@ export function StudentsManager() {
         </table>
       </div>
 
-      {isModalOpen && <StudentModal onClose={() => setIsModalOpen(false)} onSave={fetchStudents} />}
+      {isModalOpen && (
+        <StudentModal 
+          onClose={() => {
+            setIsModalOpen(false);
+            setEditingStudent(null);
+          }} 
+          onSave={fetchStudents} 
+          editingStudent={editingStudent}
+        />
+      )}
+
+      {isDeleteAllModalOpen && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-[2.5rem] w-full max-w-md shadow-2xl overflow-hidden animate-in zoom-in duration-200">
+            <div className="p-8 text-center space-y-6">
+              <div className="w-20 h-20 bg-red-50 rounded-full flex items-center justify-center mx-auto text-red-600">
+                <AlertTriangle className="w-10 h-10" />
+              </div>
+              <div className="space-y-2">
+                <h3 className="text-2xl font-bold text-slate-900">¿Eliminar TODOS los alumnos?</h3>
+                <p className="text-slate-500">Se eliminarán permanentemente todos los alumnos de este grupo, junto con sus calificaciones y récords.</p>
+                <div className="pt-4 space-y-3 text-left">
+                  <p className="text-xs font-bold text-slate-500 uppercase tracking-widest text-center">Escribe ELIMINAR para confirmar</p>
+                  <input 
+                    type="text" 
+                    value={confirmDeleteText}
+                    onChange={(e) => setConfirmDeleteText(e.target.value.toUpperCase())}
+                    placeholder="ELIMINAR"
+                    className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-red-500 outline-none text-center font-black tracking-widest placeholder:opacity-50"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <button 
+                  onClick={() => setIsDeleteAllModalOpen(false)}
+                  className="px-4 py-3 bg-slate-50 text-slate-600 rounded-2xl font-bold hover:bg-slate-100 transition-all"
+                >
+                  Cancelar
+                </button>
+                <button 
+                  onClick={handleDeleteAll}
+                  disabled={loading || confirmDeleteText !== 'ELIMINAR'}
+                  className="px-4 py-3 bg-red-600 text-white rounded-2xl font-bold hover:bg-red-700 shadow-lg shadow-red-100 transition-all flex items-center justify-center disabled:opacity-50"
+                >
+                  {loading ? <div className="w-5 h-5 border-2 border-white/20 border-t-white rounded-full animate-spin" /> : 'Confirmar'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
 
-function StudentModal({ onClose, onSave }: { onClose: () => void; onSave: () => void }) {
+function StudentModal({ onClose, onSave, editingStudent }: { onClose: () => void; onSave: () => void; editingStudent?: Student | null }) {
   const { activeGroup } = useAppStore();
   const [loading, setLoading] = useState(false);
 
@@ -396,23 +581,35 @@ function StudentModal({ onClose, onSave }: { onClose: () => void; onSave: () => 
     setLoading(true);
     const formData = new FormData(e.currentTarget);
     
-    try {
-      const { count } = await supabase.from('students').select('*', { count: 'exact', head: true });
-      
-      const { error } = await supabase.from('students').insert([{
-        first_name: formData.get('first_name'),
-        last_name: formData.get('last_name'),
-        enrollment_id: formData.get('enrollment_id'),
-        email: formData.get('email'),
-        group_id: activeGroup.id,
-        student_public_id: generateStudentPublicId((count || 0) + 1)
-      }]);
+    const studentData = {
+      first_name: formData.get('first_name'),
+      last_name: formData.get('last_name'),
+      enrollment_id: formData.get('enrollment_id'),
+      email: formData.get('email'),
+      group_id: activeGroup.id
+    };
 
-      if (error) throw error;
+    try {
+      if (editingStudent) {
+        const { error } = await supabase
+          .from('students')
+          .update(studentData)
+          .eq('id', editingStudent.id);
+        if (error) throw error;
+      } else {
+        const { count } = await supabase.from('students').select('*', { count: 'exact', head: true });
+        const { error } = await supabase.from('students').insert([{
+          ...studentData,
+          student_public_id: generateStudentPublicId((count || 0) + 1)
+        }]);
+        if (error) throw error;
+      }
+
       onSave();
       onClose();
     } catch (error) {
       console.error('Error saving student:', error);
+      alert('Error al guardar el alumno.');
     } finally {
       setLoading(false);
     }
@@ -424,8 +621,12 @@ function StudentModal({ onClose, onSave }: { onClose: () => void; onSave: () => 
         <div className="p-8">
           <div className="flex justify-between items-start mb-6">
             <div>
-              <h2 className="text-2xl font-bold text-slate-900">Agregar Alumno</h2>
-              <p className="text-sm text-slate-500">Completa los datos del nuevo estudiante.</p>
+              <h2 className="text-2xl font-bold text-slate-900">
+                {editingStudent ? 'Editar Alumno' : 'Agregar Alumno'}
+              </h2>
+              <p className="text-sm text-slate-500">
+                {editingStudent ? 'Actualiza los datos del estudiante.' : 'Completa los datos del nuevo estudiante.'}
+              </p>
             </div>
             <div className="bg-blue-50 text-blue-600 p-3 rounded-2xl">
               <UserPlus className="w-6 h-6" />
@@ -435,26 +636,27 @@ function StudentModal({ onClose, onSave }: { onClose: () => void; onSave: () => 
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-1">
                 <label className="text-xs font-bold text-slate-500 uppercase tracking-wider ml-1">Nombre(s)</label>
-                <input name="first_name" required className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none transition-all" />
+                <input name="first_name" defaultValue={editingStudent?.first_name} required className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none transition-all" />
               </div>
               <div className="space-y-1">
                 <label className="text-xs font-bold text-slate-500 uppercase tracking-wider ml-1">Apellido(s)</label>
-                <input name="last_name" required className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none transition-all" />
+                <input name="last_name" defaultValue={editingStudent?.last_name} required className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none transition-all" />
               </div>
             </div>
             <div className="space-y-1">
               <label className="text-xs font-bold text-slate-500 uppercase tracking-wider ml-1">Matrícula / Código</label>
-              <input name="enrollment_id" required className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none transition-all" />
+              <input name="enrollment_id" defaultValue={editingStudent?.enrollment_id} required className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none transition-all" />
             </div>
             <div className="space-y-1">
               <label className="text-xs font-bold text-slate-500 uppercase tracking-wider ml-1">Correo Electrónico (Opcional)</label>
-              <input name="email" type="email" className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none transition-all" />
+              <input name="email" type="email" defaultValue={editingStudent?.email} className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none transition-all" />
             </div>
             
             <div className="flex gap-4 mt-8">
               <button type="button" onClick={onClose} className="flex-1 px-4 py-3 border border-slate-200 rounded-xl font-semibold text-slate-600 hover:bg-slate-50 transition-colors">Cancelar</button>
-              <button type="submit" disabled={loading} className="flex-1 px-4 py-3 bg-blue-600 text-white rounded-xl font-semibold hover:bg-blue-700 transition-colors disabled:opacity-70">
-                {loading ? 'Guardando...' : 'Guardar Alumno'}
+              <button type="submit" disabled={loading} className="flex-1 px-4 py-3 bg-blue-600 text-white rounded-xl font-semibold hover:bg-blue-700 transition-colors disabled:opacity-70 flex items-center justify-center gap-2">
+                {loading && <div className="w-4 h-4 border-2 border-white/20 border-t-white rounded-full animate-spin" />}
+                {editingStudent ? 'Guardar Cambios' : 'Guardar Alumno'}
               </button>
             </div>
           </form>

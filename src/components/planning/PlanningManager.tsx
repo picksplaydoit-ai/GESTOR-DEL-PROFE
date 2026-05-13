@@ -30,7 +30,9 @@ import {
   CheckCircle2,
   Zap,
   Layers,
-  Clock
+  Maximize,
+  Monitor,
+  Code
 } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { useAppStore, useAuthStore } from '../../store';
@@ -50,6 +52,7 @@ const MATERIAL_TYPES = [
   { id: 'practice', label: 'Práctica', icon: Zap, color: 'text-cyan-500 bg-cyan-50' },
   { id: 'guide', label: 'Guía', icon: Bookmark, color: 'text-lime-500 bg-lime-50' },
   { id: 'instruction', label: 'Instrucciones', icon: FileCode, color: 'text-pink-500 bg-pink-50' },
+  { id: 'html', label: 'Interactivo HTML', icon: Code, color: 'text-orange-600 bg-orange-50' },
   { id: 'other', label: 'Otro', icon: MoreHorizontal, color: 'text-slate-400 bg-slate-50' },
 ];
 
@@ -75,7 +78,7 @@ function PresentationIcon(props: any) {
 }
 
 export function PlanningManager() {
-  const { activeGroup, setView } = useAppStore();
+  const { activeGroup, setView, activeMaterialId, setActiveMaterialId } = useAppStore();
   const { user } = useAuthStore();
   const [materials, setMaterials] = useState<CourseMaterial[]>([]);
   const [loading, setLoading] = useState(true);
@@ -165,6 +168,16 @@ export function PlanningManager() {
   units.sort((a, b) => a - b);
 
   if (!activeGroup) return null;
+
+  if (activeMaterialId) {
+    const activeMaterial = materials.find(m => m.id === activeMaterialId);
+    return (
+      <MaterialViewer 
+        material={activeMaterial} 
+        onBack={() => setActiveMaterialId(null)} 
+      />
+    );
+  }
 
   return (
     <div className="space-y-6 animate-in fade-in duration-500">
@@ -320,8 +333,11 @@ export function PlanningManager() {
 }
 
 function MaterialCard({ material, onEdit, onDelete, onToggleVisibility, delay }: any) {
+  const { setView, setActiveMaterialId } = useAppStore();
   const typeInfo = MATERIAL_TYPES.find(t => t.id === material.material_type) || MATERIAL_TYPES[MATERIAL_TYPES.length - 1];
   const Icon = typeInfo.icon;
+
+  const isHtml = material.material_type === 'html';
 
   const getVisibilityConfig = (visibility: MaterialVisibility) => {
     switch (visibility) {
@@ -379,7 +395,15 @@ function MaterialCard({ material, onEdit, onDelete, onToggleVisibility, delay }:
       </div>
 
       <div className="p-3 bg-slate-50/50 border-t border-slate-100 flex gap-2">
-        {material.file_url || material.external_link ? (
+        {isHtml ? (
+          <button 
+            onClick={() => setActiveMaterialId(material.id)}
+            className="flex-1 bg-blue-600 text-white py-2 rounded-xl text-xs font-bold hover:bg-blue-700 transition-all flex items-center justify-center gap-2 shadow-lg shadow-blue-100 active:scale-95"
+          >
+            <Monitor className="w-3 h-3" />
+            Abrir interactivo
+          </button>
+        ) : material.file_url || material.external_link ? (
           <a 
             href={material.file_url || material.external_link} 
             target="_blank" 
@@ -394,7 +418,18 @@ function MaterialCard({ material, onEdit, onDelete, onToggleVisibility, delay }:
             No disponible
           </div>
         )}
-        {material.visibility !== 'published' && (
+        
+        {isHtml && (
+          <button 
+            onClick={() => setActiveMaterialId(material.id)}
+            className="px-3 bg-white border border-slate-200 text-slate-600 rounded-xl hover:bg-slate-50 transition-all flex items-center justify-center"
+            title="Pantalla completa"
+          >
+            <Maximize className="w-4 h-4" />
+          </button>
+        )}
+
+        {material.visibility !== 'published' && material.material_type !== 'html' && (
           <button 
             onClick={() => onToggleVisibility('published')}
             className="px-4 py-2 bg-blue-600 text-white rounded-xl text-xs font-bold hover:bg-blue-700 transition-all shadow-lg shadow-blue-100 active:scale-95"
@@ -413,8 +448,10 @@ function MaterialCard({ material, onEdit, onDelete, onToggleVisibility, delay }:
 }
 
 function MaterialRow({ material, onEdit, onDelete, onToggleVisibility }: any) {
+  const { setActiveMaterialId } = useAppStore();
   const typeInfo = MATERIAL_TYPES.find(t => t.id === material.material_type) || MATERIAL_TYPES[MATERIAL_TYPES.length - 1];
   const Icon = typeInfo.icon;
+  const isHtml = material.material_type === 'html';
 
   const visConfig = {
     published: { label: 'Publicado', color: 'text-green-600 bg-green-50' },
@@ -432,7 +469,18 @@ function MaterialRow({ material, onEdit, onDelete, onToggleVisibility }: any) {
             <Icon className="w-5 h-5" />
           </div>
           <div>
-            <p className="text-sm font-bold text-slate-900 line-clamp-1">{material.title}</p>
+            <div className="flex items-center gap-2">
+              <p className="text-sm font-bold text-slate-900 line-clamp-1">{material.title}</p>
+              {isHtml && (
+                <button 
+                  onClick={() => setActiveMaterialId(material.id)}
+                  className="p-1 text-blue-600 bg-blue-50 rounded hover:bg-blue-100 transition-all"
+                  title="Abrir interactivo"
+                >
+                  <Monitor className="w-3 h-3" />
+                </button>
+              )}
+            </div>
             <p className="text-xs text-slate-500 line-clamp-1">{material.description || 'Sin descripción'}</p>
           </div>
         </div>
@@ -733,7 +781,7 @@ function MaterialModal({ onClose, onSave, editingMaterial }: any) {
                            <>
                              <Upload className="w-8 h-8 text-slate-400 mb-2 group-hover:scale-110 transition-transform" />
                              <p className="text-xs font-bold text-slate-500">Arrastra o haz clic para subir</p>
-                             <p className="text-[10px] text-slate-400">PDF, Word, PPTX, etc.</p>
+                             <p className="text-[10px] text-slate-400">PDF, Word, PPTX, HTML, etc.</p>
                            </>
                          )}
                        </label>
@@ -813,7 +861,7 @@ function CreateActivityFromMaterial({ materialId, onSave, onClose }: { materialI
       type: formData.get('type') as string,
       grading_mode: formData.get('grading_mode') as string,
       total_deliveries: parseInt(formData.get('total_deliveries') as string || '1'),
-      due_date: formData.get('due_date') as string,
+      due_date: formData.get('due_date') || new Date().toISOString(),
       status: 'active'
     };
 
@@ -873,25 +921,20 @@ function CreateActivityFromMaterial({ materialId, onSave, onClose }: { materialI
                 </select>
               </div>
 
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-1">
-                  <label className="text-xs font-bold text-slate-500 uppercase tracking-wider ml-1">Tipo</label>
-                  <select name="type" className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-emerald-500 outline-none transition-all">
-                    <option value="individual">Individual</option>
-                    <option value="team">Por Equipo</option>
-                  </select>
-                </div>
-                <div className="space-y-1">
-                  <label className="text-xs font-bold text-slate-500 uppercase tracking-wider ml-1">Fecha de Entrega</label>
-                  <input type="date" name="due_date" required className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-emerald-500 outline-none transition-all" />
-                </div>
+              <div className="space-y-1">
+                <label className="text-xs font-bold text-slate-500 uppercase tracking-wider ml-1">Tipo de Actividad</label>
+                <select name="type" className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-emerald-500 outline-none transition-all">
+                  <option value="individual">Individual</option>
+                  <option value="team">Por Equipo</option>
+                </select>
               </div>
 
               <div className="space-y-1">
                 <label className="text-xs font-bold text-slate-500 uppercase tracking-wider ml-1">Modo de Calificación</label>
-                <select name="grading_mode" className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-emerald-500 outline-none transition-all">
-                  <option value="direct">Calificación Directa (0-10)</option>
-                  <option value="deliveries">Acumulación de Entregas / Firmas</option>
+                <select name="grading_mode" className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-emerald-500 outline-none transition-all font-bold">
+                  <option value="direct">Calificación Directa (0-100)</option>
+                  <option value="deliveries">Por Entregas / Firmas</option>
+                  <option value="binary">Entregado / No entregado</option>
                 </select>
               </div>
            </div>
@@ -904,6 +947,83 @@ function CreateActivityFromMaterial({ materialId, onSave, onClose }: { materialI
               </button>
            </div>
         </form>
+      </div>
+    </div>
+  );
+}
+
+function MaterialViewer({ material, onBack }: { material: CourseMaterial | undefined, onBack: () => void }) {
+  const [isFullscreen, setIsFullscreen] = useState(false);
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  if (!material) return null;
+
+  const toggleFullscreen = () => {
+    if (!containerRef.current) return;
+    if (!document.fullscreenElement) {
+      containerRef.current.requestFullscreen().catch(err => {
+        console.error(`Error attempting to enable full-screen mode: ${err.message}`);
+      });
+      setIsFullscreen(true);
+    } else {
+      document.exitFullscreen();
+      setIsFullscreen(false);
+    }
+  };
+
+  return (
+    <div className="h-[calc(100vh-120px)] flex flex-col animate-in fade-in slide-in-from-bottom-4 duration-500">
+      <div className="flex items-center justify-between mb-6">
+        <div className="flex items-center gap-4">
+          <button onClick={onBack} className="p-2 hover:bg-white rounded-full text-slate-400 group/back">
+            <ChevronLeft className="w-6 h-6 group-hover/back:-translate-x-1 transition-transform" />
+          </button>
+          <div>
+            <h1 className="text-2xl font-bold text-slate-900">{material.title}</h1>
+            <p className="text-sm text-slate-500">{material.description || 'Simulador Interactivo'}</p>
+          </div>
+        </div>
+        <div className="flex gap-2">
+           <button 
+            onClick={toggleFullscreen}
+            className="bg-white border border-slate-200 text-slate-600 px-4 py-2 rounded-xl font-bold flex items-center gap-2 hover:bg-slate-50 transition-all shadow-sm"
+          >
+            <Maximize className="w-4 h-4" />
+            Pantalla Completa
+          </button>
+          <button 
+            onClick={onBack}
+            className="bg-slate-900 text-white px-6 py-2 rounded-xl font-bold hover:bg-slate-800 transition-all shadow-lg shadow-slate-200"
+          >
+            Salir
+          </button>
+        </div>
+      </div>
+
+      <div 
+        ref={containerRef}
+        className={cn(
+          "flex-1 bg-black rounded-[2.5rem] overflow-hidden border-8 border-slate-900/10 shadow-2xl relative group",
+          isFullscreen ? "rounded-none border-0" : ""
+        )}
+      >
+        <iframe 
+          src={material.file_url}
+          className="w-full h-full border-none bg-white"
+          title={material.title}
+          sandbox="allow-scripts allow-same-origin"
+          allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+          allowFullScreen
+        />
+        
+        {isFullscreen && (
+          <button 
+            onClick={toggleFullscreen}
+            className="absolute top-6 right-6 p-4 bg-slate-900/80 text-white rounded-2xl backdrop-blur-md opacity-0 group-hover:opacity-100 transition-opacity hover:bg-slate-800"
+          >
+            <ChevronLeft className="w-6 h-6 rotate-90" />
+          </button>
+        )}
       </div>
     </div>
   );

@@ -1,6 +1,6 @@
 export type AttendanceStatus = 'present' | 'absent' | 'late' | 'justified';
 export type ActivityType = 'individual' | 'team';
-export type GradingMode = 'direct' | 'deliveries';
+export type GradingMode = 'direct' | 'deliveries' | 'binary';
 export type SubmissionStatus = 'delivered' | 'not_delivered' | 'late';
 
 export interface Group {

@@ -154,13 +154,18 @@ export function ActivitiesManager() {
                         <Calculator className="w-3 h-3" /> Cálc. Auto ({activity.total_deliveries})
                       </span>
                     )}
+                    {activity.grading_mode === 'binary' && (
+                      <span className="bg-cyan-50 text-cyan-600 px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider border border-cyan-100 flex items-center gap-1">
+                        <CheckCircle2 className="w-3 h-3" /> Entregado / No entregado
+                      </span>
+                    )}
                   </div>
                 </div>
 
                 <div className="mt-8 pt-6 border-t border-slate-100 flex items-center justify-between">
                   <div className="flex items-center gap-2 text-slate-400 text-xs">
                     <Calendar className="w-4 h-4" />
-                    <span>{formatLocalDate(activity.due_date, "d 'de' MMMM")}</span>
+                    <span>{activity.due_date ? formatLocalDate(activity.due_date, "d 'de' MMMM") : 'Sin fecha'}</span>
                   </div>
                   <div className="flex items-center gap-1 text-blue-600 font-bold text-sm">
                     Calificar
@@ -224,6 +229,14 @@ function GradingManager({ activity, onBack }: { activity: Activity, onBack: () =
       const count = Number(value) || 0;
       updated.grade = Math.round((count / activity.total_deliveries) * 100);
       updated.status = count > 0 ? 'delivered' : 'not_delivered';
+    } else if (activity.grading_mode === 'binary' && (field === 'status' || field === 'grade')) {
+      if (field === 'status') {
+        updated.grade = value === 'delivered' ? 100 : 0;
+        updated.status = value as any;
+      } else {
+        // If they update grade manually in binary mode (though we hide input, keeps logic safe)
+        updated.status = Number(value) >= 60 ? 'delivered' : 'not_delivered';
+      }
     } else if (field === 'status') {
       if (value === 'not_delivered') updated.grade = 0;
     }
@@ -293,20 +306,43 @@ function GradingManager({ activity, onBack }: { activity: Activity, onBack: () =
                     <p className="text-[10px] font-mono text-slate-400">{student.student_public_id}</p>
                   </td>
                   <td className="px-6 py-5">
-                    <select 
-                      value={sub?.status || 'not_delivered'}
-                      onChange={(e) => handleUpdateSubmission(student.id, 'status', e.target.value)}
-                      className={cn(
-                        "text-xs font-bold px-3 py-1.5 rounded-lg border focus:ring-2 focus:ring-blue-500 outline-none transition-all",
-                        sub?.status === 'delivered' ? "bg-green-50 text-green-700 border-green-200" :
-                        sub?.status === 'late' ? "bg-amber-50 text-amber-700 border-amber-200" :
-                        "bg-red-50 text-red-700 border-red-200"
-                      )}
-                    >
-                      <option value="delivered">Entregado</option>
-                      <option value="late">Entrega Tardía</option>
-                      <option value="not_delivered">No entregado</option>
-                    </select>
+                    {activity.grading_mode === 'binary' ? (
+                       <div className="flex gap-2">
+                        <button 
+                          onClick={() => handleUpdateSubmission(student.id, 'status', 'delivered')}
+                          className={cn(
+                            "flex-1 px-4 py-2 rounded-xl font-bold text-xs transition-all",
+                            sub?.status === 'delivered' ? "bg-green-600 text-white shadow-lg shadow-green-100" : "bg-slate-50 text-slate-400 hover:bg-slate-100"
+                          )}
+                        >
+                          Entregado
+                        </button>
+                        <button 
+                          onClick={() => handleUpdateSubmission(student.id, 'status', 'not_delivered')}
+                          className={cn(
+                            "flex-1 px-4 py-2 rounded-xl font-bold text-xs transition-all",
+                            sub?.status === 'not_delivered' ? "bg-red-600 text-white shadow-lg shadow-red-100" : "bg-slate-50 text-slate-400 hover:bg-slate-100"
+                          )}
+                        >
+                          No entregado
+                        </button>
+                      </div>
+                    ) : (
+                      <select 
+                        value={sub?.status || 'not_delivered'}
+                        onChange={(e) => handleUpdateSubmission(student.id, 'status', e.target.value)}
+                        className={cn(
+                          "text-xs font-bold px-3 py-1.5 rounded-lg border focus:ring-2 focus:ring-blue-500 outline-none transition-all w-full",
+                          sub?.status === 'delivered' ? "bg-green-50 text-green-700 border-green-200" :
+                          sub?.status === 'late' ? "bg-amber-50 text-amber-700 border-amber-200" :
+                          "bg-red-50 text-red-700 border-red-200"
+                        )}
+                      >
+                        <option value="delivered">Entregado</option>
+                        <option value="late">Entrega Tardía</option>
+                        <option value="not_delivered">No entregado</option>
+                      </select>
+                    )}
                   </td>
                   <td className="px-6 py-5">
                     {activity.grading_mode === 'deliveries' ? (
@@ -325,8 +361,18 @@ function GradingManager({ activity, onBack }: { activity: Activity, onBack: () =
                             <span className="font-black text-blue-600">{sub?.grade || 0}</span>
                          </div>
                       </div>
+                    ) : activity.grading_mode === 'binary' ? (
+                      <div className="flex flex-col items-center">
+                        <span className="text-[10px] text-slate-400 font-bold uppercase mb-1">Calificación</span>
+                        <div className={cn(
+                          "px-4 py-2 rounded-xl font-black text-lg border min-w-[80px] text-center",
+                          (sub?.grade || 0) === 100 ? "bg-green-50 text-green-700 border-green-200" : "bg-red-50 text-red-700 border-red-200"
+                        )}>
+                          {sub?.grade || 0}
+                        </div>
+                      </div>
                     ) : (
-                      <div className="relative w-24">
+                      <div className="relative w-24 mx-auto">
                         <input 
                           type="number"
                           min="0"
@@ -371,7 +417,7 @@ function ActivityModal({ onClose, onSave, criteria }: { onClose: () => void, onS
         type: formData.get('type'),
         grading_mode: gradingMode,
         total_deliveries: gradingMode === 'deliveries' ? Number(formData.get('total_deliveries')) : 1,
-        due_date: formData.get('due_date'),
+        due_date: formData.get('due_date') || new Date().toISOString(),
         status: 'active'
       }]);
 
@@ -417,14 +463,9 @@ function ActivityModal({ onClose, onSave, criteria }: { onClose: () => void, onS
               </select>
             </div>
 
-            <div className="space-y-1">
-              <label className="text-xs font-bold text-slate-500 uppercase tracking-wider ml-1">Fecha de Entrega</label>
-              <input name="due_date" type="datetime-local" required className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none transition-all" />
-            </div>
-
             <div className="space-y-1 md:col-span-2">
               <label className="text-xs font-bold text-slate-500 uppercase tracking-wider ml-1">Modo de Calificación</label>
-              <div className="grid grid-cols-2 gap-3 mt-2">
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mt-2">
                 <button 
                   type="button"
                   onClick={() => setGradingMode('direct')}
@@ -434,7 +475,7 @@ function ActivityModal({ onClose, onSave, criteria }: { onClose: () => void, onS
                   )}
                 >
                   <Edit3 className="w-5 h-5" />
-                  <span className="text-sm font-bold">Directa (0-100)</span>
+                  <span className="text-sm font-bold text-center">Directa (0-100)</span>
                 </button>
                 <button 
                   type="button"
@@ -445,7 +486,18 @@ function ActivityModal({ onClose, onSave, criteria }: { onClose: () => void, onS
                   )}
                 >
                   <Calculator className="w-5 h-5" />
-                  <span className="text-sm font-bold">Por Entregas</span>
+                  <span className="text-sm font-bold text-center">Por Entregas</span>
+                </button>
+                <button 
+                  type="button"
+                   onClick={() => setGradingMode('binary')}
+                  className={cn(
+                    "flex flex-col items-center gap-2 p-4 rounded-2xl border-2 transition-all",
+                    gradingMode === 'binary' ? "bg-cyan-50 border-cyan-600 text-cyan-900 shadow-sm" : "border-slate-100 text-slate-400 hover:border-slate-200"
+                  )}
+                >
+                  <CheckCircle2 className="w-5 h-5" />
+                  <span className="text-sm font-bold text-center">Entregado / No entregado</span>
                 </button>
               </div>
             </div>
