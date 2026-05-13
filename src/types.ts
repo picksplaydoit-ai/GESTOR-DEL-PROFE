@@ -53,6 +53,29 @@ export interface Activity {
   status: 'active' | 'closed';
 }
 
+export type MaterialVisibility = 'private' | 'publishable' | 'published';
+
+export interface CourseMaterial {
+  id: string;
+  professor_id: string;
+  group_id: string;
+  activity_id?: string;
+  title: string;
+  description?: string;
+  material_type: string;
+  unit?: number;
+  week?: number;
+  suggested_date?: string;
+  file_url?: string;
+  file_path?: string;
+  external_link?: string;
+  private_notes?: string;
+  visibility: MaterialVisibility;
+  reusable: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface Submission {
   id: string;
   activity_id: string;

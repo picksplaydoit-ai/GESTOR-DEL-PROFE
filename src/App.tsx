@@ -15,6 +15,7 @@ import { ActivitiesManager } from './components/activities/ActivitiesManager';
 import { AttendanceManager } from './components/attendance/AttendanceManager';
 import { AnalyticsManager } from './components/analytics/AnalyticsManager';
 import { TeamsManager } from './components/groups/TeamsManager';
+import { PlanningManager } from './components/planning/PlanningManager';
 import { Dashboard } from './components/dashboard/Dashboard';
 import { Loader2, Settings } from 'lucide-react';
 
@@ -51,6 +52,8 @@ export default function App() {
         return <AttendanceManager />;
       case 'rubrics':
         return <RubricManager />;
+      case 'planning':
+        return <PlanningManager />;
       case 'analytics':
         return <AnalyticsManager />;
       case 'settings':

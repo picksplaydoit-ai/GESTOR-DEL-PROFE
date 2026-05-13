@@ -12,7 +12,8 @@ import {
   FileText,
   Scale,
   Settings,
-  ArrowLeft
+  ArrowLeft,
+  BookOpen
 } from 'lucide-react';
 import { useAppStore, useAuthStore } from '../../store';
 import { cn } from '../../lib/utils';
@@ -32,6 +33,7 @@ export function Sidebar() {
     { id: 'dashboard', label: 'Resumen', icon: LayoutDashboard },
     { id: 'students', label: 'Alumnos', icon: Users },
     { id: 'rubrics', label: 'Rúbrica', icon: Scale },
+    { id: 'planning', label: 'Planeación', icon: BookOpen },
     { id: 'activities', label: 'Actividades', icon: FileText },
     { id: 'teams', label: 'Equipos', icon: ShieldCheck },
     { id: 'attendance', label: 'Asistencia', icon: ClipboardCheck },
