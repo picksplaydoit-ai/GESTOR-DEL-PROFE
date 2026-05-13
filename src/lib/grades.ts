@@ -24,34 +24,42 @@ export function calculateGrades(
   return students.map(student => {
     const gradesByCriterion: Record<string, number> = {};
     let activeWeightSum = 0;
-    let weightedScore = 0;
+    let weightedSum = 0;
 
     // 1. Calculate grade per criterion
     criteria.forEach(criterion => {
       const criterionActivities = activities.filter(a => a.criterion_id === criterion.id);
       
       if (criterionActivities.length > 0) {
-        // Criterion is ACTIVE
+        // Criterion is ACTIVE if it has at least one activity
         let totalGrades = 0;
+        let gradedActivitiesCount = 0;
+
         criterionActivities.forEach(activity => {
           const sub = submissions[`${activity.id}_${student.id}`];
-          totalGrades += sub?.grade || 0;
+          // We count all activities in the criterion. 
+          // If no submission, it's 0 grade.
+          totalGrades += (sub?.grade || 0);
+          gradedActivitiesCount++;
         });
 
-        const criterionAvg = totalGrades / criterionActivities.length;
-        gradesByCriterion[criterion.id] = criterionAvg;
-        
-        activeWeightSum += Number(criterion.weight);
-        weightedScore += (criterionAvg * (Number(criterion.weight) / 100));
+        if (gradedActivitiesCount > 0) {
+          const criterionAvg = totalGrades / gradedActivitiesCount;
+          gradesByCriterion[criterion.id] = criterionAvg;
+          
+          const weight = Number(criterion.weight) || 0;
+          activeWeightSum += weight;
+          weightedSum += (criterionAvg * weight);
+        }
       }
     });
 
-    // 2. Special Rule Recalculation
+    // 2. Calculation: (suma_de_rubros_activos_ponderados / suma_de_pesos_activos)
+    // Formula: (weightedSum / activeWeightSum)
+    // Since criterionAvg is 0-100, the result is 0-100
     let finalGrade = 0;
     if (activeWeightSum > 0) {
-       // Calculation: (weightedScore / (activeWeightSum / 100))
-       // This re-scales the active weights to 100%
-       finalGrade = (weightedScore / (activeWeightSum / 100));
+       finalGrade = weightedSum / activeWeightSum;
     }
 
     // 3. Attendance Calculation
@@ -63,9 +71,9 @@ export function calculateGrades(
     // 4. Status determination
     let status: 'APROBADO' | 'REPROBADO' | 'SD' = 'APROBADO';
     
-    if (attendancePercentage < rubric.min_attendance) {
+    if (attendancePercentage < (rubric.min_attendance || 80)) {
       status = 'SD';
-    } else if (finalGrade < rubric.min_grade) {
+    } else if (finalGrade < (rubric.min_grade || 60)) {
       status = 'REPROBADO';
     }
 
@@ -73,7 +81,7 @@ export function calculateGrades(
       student,
       gradesByCriterion,
       activeWeightSum,
-      weightedScore,
+      weightedScore: weightedSum / 100, // For legacy internal tracking if needed
       finalGrade,
       attendanceTotal,
       attendancePresent,

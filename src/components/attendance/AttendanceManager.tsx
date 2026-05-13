@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { toast } from 'react-hot-toast';
 import { 
   ClipboardCheck, 
   ChevronLeft, 
@@ -8,7 +9,11 @@ import {
   Clock,
   HelpCircle,
   Save,
-  Check
+  Check,
+  UserCheck,
+  UserMinus,
+  UserX,
+  UserPlus
 } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { useAppStore } from '../../store';
@@ -95,10 +100,24 @@ export function AttendanceManager() {
     if (status === 'late') value = 0.5;
     if (status === 'absent') value = 0;
 
-    setRecords({
-      ...records,
+    setRecords(prev => ({
+      ...prev,
       [studentId]: { status, value }
+    }));
+  };
+
+  const handleMarkAll = (status: AttendanceStatus) => {
+    let value = 0;
+    if (status === 'present' || status === 'justified') value = 1;
+    if (status === 'late') value = 0.5;
+    if (status === 'absent') value = 0;
+
+    const newRecords: Record<string, { status: AttendanceStatus, value: number }> = {};
+    students.forEach(s => {
+      newRecords[s.id] = { status, value };
     });
+    setRecords(newRecords);
+    toast.success(`Todos marcados como ${status}`);
   };
 
   const handleSave = async () => {
@@ -177,6 +196,37 @@ export function AttendanceManager() {
             Guardar Lista
           </button>
         </div>
+      </div>
+
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 bg-white p-6 rounded-3xl border border-slate-200 shadow-sm">
+        <button 
+          onClick={() => handleMarkAll('present')}
+          className="flex items-center justify-center gap-2 px-4 py-3 bg-green-50 text-green-700 rounded-2xl font-bold hover:bg-green-100 transition-all border border-green-100"
+        >
+          <UserCheck className="w-5 h-5" />
+          Todos Presentes
+        </button>
+        <button 
+          onClick={() => handleMarkAll('absent')}
+          className="flex items-center justify-center gap-2 px-4 py-3 bg-red-50 text-red-700 rounded-2xl font-bold hover:bg-red-100 transition-all border border-red-100"
+        >
+          <UserX className="w-5 h-5" />
+          Todos Falta
+        </button>
+        <button 
+          onClick={() => handleMarkAll('late')}
+          className="flex items-center justify-center gap-2 px-4 py-3 bg-amber-50 text-amber-700 rounded-2xl font-bold hover:bg-amber-100 transition-all border border-amber-100"
+        >
+          <Clock className="w-5 h-5" />
+          Todos Retardo
+        </button>
+        <button 
+          onClick={() => handleMarkAll('justified')}
+          className="flex items-center justify-center gap-2 px-4 py-3 bg-blue-50 text-blue-700 rounded-2xl font-bold hover:bg-blue-100 transition-all border border-blue-100"
+        >
+          <HelpCircle className="w-5 h-5" />
+          Todos Justificada
+        </button>
       </div>
 
       <div className="bg-white rounded-3xl border border-slate-200 shadow-sm overflow-hidden">
