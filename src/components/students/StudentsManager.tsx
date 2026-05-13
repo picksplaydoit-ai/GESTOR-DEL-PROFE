@@ -23,7 +23,16 @@ export function StudentsManager() {
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [importPreview, setImportPreview] = useState<any[] | null>(null);
+  const [importPreview, setImportPreview] = useState<ImportStudent[] | null>(null);
+  const [importErrors, setImportErrors] = useState<string[]>([]);
+
+  interface ImportStudent {
+    first_name: string;
+    last_name: string;
+    enrollment_id: string;
+    email: string;
+    id?: string; // for local editing tracking
+  }
 
   useEffect(() => {
     if (activeGroup) {
@@ -49,33 +58,116 @@ export function StudentsManager() {
     }
   }
 
+  const splitFullName = (fullName: string) => {
+    const parts = fullName.trim().split(/\s+/);
+    if (parts.length === 0) return { first_name: '', last_name: '' };
+    if (parts.length === 1) return { first_name: parts[0], last_name: '' };
+    if (parts.length === 2) return { first_name: parts[1], last_name: parts[0] };
+    
+    // Heuristic: first 2 tokens = last name, rest = first name
+    // Example: BASULTO ALVAREZ BRENDA JAQUELINE
+    // parts: ["BASULTO", "ALVAREZ", "BRENDA", "JAQUELINE"]
+    // last: BASULTO ALVAREZ, first: BRENDA JAQUELINE
+    return {
+      last_name: parts.slice(0, 2).join(' '),
+      first_name: parts.slice(2).join(' ')
+    };
+  };
+
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
       Papa.parse(file, {
         header: true,
+        skipEmptyLines: true,
         complete: (results) => {
-          setImportPreview(results.data.filter((row: any) => row.nombre || row.first_name));
+          const rawData = results.data as any[];
+          const processed = rawData.map((row, index) => {
+            let first_name = row.first_name || row.nombre || '';
+            let last_name = row.last_name || row.apellido || '';
+            let enrollment_id = row.enrollment_id || row.matricula || row.id || '';
+            let email = row.email || row.correo || '';
+
+            // Google Contacts detection
+            if (row['Name']) {
+              const split = splitFullName(row['Name']);
+              first_name = split.first_name;
+              last_name = split.last_name;
+            }
+            if (row['Notes']) enrollment_id = row['Notes'];
+            if (row['E-mail 1 - Value']) email = row['E-mail 1 - Value'];
+
+            return {
+              id: `temp-${index}`,
+              first_name: String(first_name).trim(),
+              last_name: String(last_name).trim(),
+              enrollment_id: String(enrollment_id).trim(),
+              email: String(email).trim(),
+            };
+          }).filter(s => s.first_name || s.last_name);
+
+          validateImport(processed);
+          setImportPreview(processed);
         }
       });
+      // Reset input
+      e.target.value = '';
     }
   };
 
+  const validateImport = (data: ImportStudent[]) => {
+    const errors: string[] = [];
+    const enrollments = new Set();
+    const emails = new Set();
+
+    data.forEach((s, i) => {
+      if (s.enrollment_id) {
+        if (enrollments.has(s.enrollment_id)) {
+          errors.push(`Fila ${i + 1}: Matrícula duplicada en el archivo (${s.enrollment_id})`);
+        }
+        enrollments.add(s.enrollment_id);
+      }
+      if (s.email) {
+        if (emails.has(s.email)) {
+          errors.push(`Fila ${i + 1}: Correo duplicado en el archivo (${s.email})`);
+        }
+        emails.add(s.email);
+      }
+
+      // Check against current students
+      if (students.find(existing => existing.enrollment_id === s.enrollment_id)) {
+        errors.push(`Fila ${i + 1}: Matrícula ${s.enrollment_id} ya existe en este grupo.`);
+      }
+      if (s.email && students.find(existing => existing.email === s.email)) {
+        errors.push(`Fila ${i + 1}: Correo ${s.email} ya existe en este grupo.`);
+      }
+    });
+
+    setImportErrors(errors);
+  };
+
+  const updatePreviewRow = (index: number, field: keyof ImportStudent, value: string) => {
+    if (!importPreview) return;
+    const updated = [...importPreview];
+    updated[index] = { ...updated[index], [field]: value };
+    setImportPreview(updated);
+    validateImport(updated);
+  };
+
   const processImport = async () => {
-    if (!importPreview || !activeGroup) return;
+    if (!importPreview || !activeGroup || importErrors.length > 0) return;
     setLoading(true);
     
     try {
-      // Get current count for ID generation
       const { count } = await supabase
         .from('students')
         .select('*', { count: 'exact', head: true });
       
       const newStudents = importPreview.map((row, index) => ({
-        first_name: row.nombre || row.first_name,
-        last_name: row.apellido || row.last_name,
-        enrollment_id: row.matricula || row.id || '',
-        email: row.correo || row.email || '',
+        first_name: row.first_name,
+        last_name: row.last_name,
+        enrollment_id: row.enrollment_id,
+        email: row.email,
         group_id: activeGroup.id,
         student_public_id: generateStudentPublicId((count || 0) + index + 1),
         is_active: true
@@ -88,6 +180,7 @@ export function StudentsManager() {
       fetchStudents();
     } catch (error) {
       console.error('Error importing students:', error);
+      setImportErrors(['Error al guardar en la base de datos. Verifica los datos e intenta de nuevo.']);
     } finally {
       setLoading(false);
     }
@@ -145,38 +238,83 @@ export function StudentsManager() {
       </div>
 
       {importPreview && (
-        <div className="bg-blue-50 border border-blue-200 rounded-2xl p-6 animate-in slide-in-from-top-4 duration-300">
+        <div className={cn(
+          "bg-white border rounded-2xl p-6 shadow-xl animate-in slide-in-from-top-4 duration-300",
+          importErrors.length > 0 ? "border-red-200" : "border-blue-200"
+        )}>
            <div className="flex items-center justify-between mb-4">
               <div className="flex items-center gap-3">
-                <FileSpreadsheet className="w-6 h-6 text-blue-600" />
-                <h3 className="font-bold text-blue-900">Vista previa de importación ({importPreview.length} alumnos)</h3>
+                <FileSpreadsheet className={cn("w-6 h-6", importErrors.length > 0 ? "text-red-500" : "text-blue-600")} />
+                <div>
+                  <h3 className="font-bold text-slate-900">Vista previa de importación ({importPreview.length} alumnos)</h3>
+                  <p className="text-xs text-slate-500">Puedes corregir los datos directamente en la tabla antes de confirmar.</p>
+                </div>
               </div>
               <div className="flex gap-3">
-                <button onClick={() => setImportPreview(null)} className="text-sm font-semibold text-blue-600 hover:underline">Cancelar</button>
+                <button onClick={() => setImportPreview(null)} className="px-4 py-2 text-sm font-bold text-slate-500 hover:bg-slate-100 rounded-lg transition-colors">Cancelar</button>
                 <button 
                   onClick={processImport} 
-                  disabled={loading}
-                  className="bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-bold shadow-md hover:bg-blue-700 disabled:opacity-50"
+                  disabled={loading || importErrors.length > 0}
+                  className="bg-blue-600 text-white px-6 py-2 rounded-lg text-sm font-bold shadow-lg shadow-blue-100 hover:bg-blue-700 disabled:opacity-50 transition-all"
                 >
-                  Confirmar Importación
+                  {loading ? 'Procesando...' : 'Confirmar Importación'}
                 </button>
               </div>
            </div>
-           <div className="max-h-60 overflow-y-auto bg-white rounded-xl border border-blue-100">
+
+           {importErrors.length > 0 && (
+             <div className="mb-4 p-4 bg-red-50 border border-red-100 rounded-xl space-y-1">
+               <div className="flex items-center gap-2 text-red-600 font-bold text-sm mb-1">
+                 <AlertCircle className="w-4 h-4" />
+                 Corrige los siguientes errores:
+               </div>
+               {importErrors.map((err, i) => (
+                 <p key={i} className="text-xs text-red-500 ml-6 tracking-tight">• {err}</p>
+               ))}
+             </div>
+           )}
+
+           <div className="max-h-96 overflow-y-auto bg-white rounded-xl border border-slate-200">
               <table className="w-full text-left text-sm">
-                <thead className="bg-slate-50 sticky top-0">
+                <thead className="bg-slate-50 sticky top-0 z-10 border-b border-slate-200">
                   <tr>
-                    <th className="px-4 py-2 font-bold text-slate-600">Nombre</th>
-                    <th className="px-4 py-2 font-bold text-slate-600">Apellido</th>
-                    <th className="px-4 py-2 font-bold text-slate-600">Matrícula</th>
+                    <th className="px-4 py-3 font-bold text-slate-600">Nombre(s)</th>
+                    <th className="px-4 py-3 font-bold text-slate-600">Apellido(s)</th>
+                    <th className="px-4 py-3 font-bold text-slate-600">Matrícula</th>
+                    <th className="px-4 py-3 font-bold text-slate-600">Correo</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
                   {importPreview.map((row, i) => (
-                    <tr key={i}>
-                      <td className="px-4 py-2">{row.nombre || row.first_name}</td>
-                      <td className="px-4 py-2">{row.apellido || row.last_name}</td>
-                      <td className="px-4 py-2">{row.matricula || row.id}</td>
+                    <tr key={i} className="hover:bg-slate-50 transition-colors">
+                      <td className="px-2 py-1">
+                        <input 
+                          value={row.first_name} 
+                          onChange={(e) => updatePreviewRow(i, 'first_name', e.target.value)}
+                          className="w-full px-2 py-1.5 focus:bg-white focus:ring-2 focus:ring-blue-100 outline-none rounded bg-transparent transition-all"
+                        />
+                      </td>
+                      <td className="px-2 py-1">
+                        <input 
+                          value={row.last_name} 
+                          onChange={(e) => updatePreviewRow(i, 'last_name', e.target.value)}
+                          className="w-full px-2 py-1.5 focus:bg-white focus:ring-2 focus:ring-blue-100 outline-none rounded bg-transparent transition-all"
+                        />
+                      </td>
+                      <td className="px-2 py-1">
+                        <input 
+                          value={row.enrollment_id} 
+                          onChange={(e) => updatePreviewRow(i, 'enrollment_id', e.target.value)}
+                          className="w-full px-2 py-1.5 focus:bg-white focus:ring-2 focus:ring-blue-100 outline-none rounded bg-transparent font-mono transition-all"
+                        />
+                      </td>
+                      <td className="px-2 py-1">
+                        <input 
+                          value={row.email} 
+                          onChange={(e) => updatePreviewRow(i, 'email', e.target.value)}
+                          className="w-full px-2 py-1.5 focus:bg-white focus:ring-2 focus:ring-blue-100 outline-none rounded bg-transparent transition-all"
+                        />
+                      </td>
                     </tr>
                   ))}
                 </tbody>
