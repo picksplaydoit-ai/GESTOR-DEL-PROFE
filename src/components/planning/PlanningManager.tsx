@@ -934,7 +934,7 @@ function CreateActivityFromMaterial({ materialId, onSave, onClose }: { materialI
                 <select name="grading_mode" className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-emerald-500 outline-none transition-all font-bold">
                   <option value="direct">Calificación Directa (0-100)</option>
                   <option value="deliveries">Por Entregas / Firmas</option>
-                  <option value="binary">Entregado / No entregado</option>
+                  <option value="boolean">Entregado / No entregado</option>
                 </select>
               </div>
            </div>

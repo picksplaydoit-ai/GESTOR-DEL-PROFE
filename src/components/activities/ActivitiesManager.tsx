@@ -14,7 +14,8 @@ import {
   Search,
   Calculator,
   ShieldCheck,
-  Scale
+  Scale,
+  Trash2
 } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { useAppStore } from '../../store';
@@ -52,6 +53,21 @@ export function ActivitiesManager() {
       setLoading(false);
     }
   }
+
+  const handleDeleteActivity = async (id: string) => {
+    if (!confirm('¿Seguro que quieres eliminar esta actividad? Se perderán todas las calificaciones registradas.')) return;
+    setLoading(true);
+    try {
+      const { error } = await supabase.from('activities').delete().eq('id', id);
+      if (error) throw error;
+      fetchData();
+    } catch (error) {
+      console.error('Error deleting activity:', error);
+      alert('Error al eliminar la actividad');
+    } finally {
+      setLoading(false);
+    }
+  };
 
   if (!activeGroup) return null;
 
@@ -135,11 +151,19 @@ export function ActivitiesManager() {
                   )}>
                     {activity.type === 'individual' ? <User className="w-6 h-6" /> : <Users className="w-6 h-6" />}
                   </div>
-                  <div className={cn(
-                    "px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest",
-                    activity.status === 'active' ? "bg-green-100 text-green-700" : "bg-slate-100 text-slate-500"
-                  )}>
-                    {activity.status === 'active' ? 'Activa' : 'Cerrada'}
+                  <div className="flex items-center gap-2">
+                    <div className={cn(
+                      "px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest",
+                      activity.status === 'active' ? "bg-green-100 text-green-700" : "bg-slate-100 text-slate-500"
+                    )}>
+                      {activity.status === 'active' ? 'Activa' : 'Cerrada'}
+                    </div>
+                    <button 
+                      onClick={(e) => { e.stopPropagation(); handleDeleteActivity(activity.id); }}
+                      className="p-1.5 text-slate-300 hover:text-red-500 hover:bg-red-50 rounded-lg transition-all"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
                   </div>
                 </div>
 
@@ -154,7 +178,7 @@ export function ActivitiesManager() {
                         <Calculator className="w-3 h-3" /> Cálc. Auto ({activity.total_deliveries})
                       </span>
                     )}
-                    {activity.grading_mode === 'binary' && (
+                    {activity.grading_mode === 'boolean' && (
                       <span className="bg-cyan-50 text-cyan-600 px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider border border-cyan-100 flex items-center gap-1">
                         <CheckCircle2 className="w-3 h-3" /> Entregado / No entregado
                       </span>
@@ -229,12 +253,11 @@ function GradingManager({ activity, onBack }: { activity: Activity, onBack: () =
       const count = Number(value) || 0;
       updated.grade = Math.round((count / activity.total_deliveries) * 100);
       updated.status = count > 0 ? 'delivered' : 'not_delivered';
-    } else if (activity.grading_mode === 'binary' && (field === 'status' || field === 'grade')) {
+    } else if (activity.grading_mode === 'boolean' && (field === 'status' || field === 'grade')) {
       if (field === 'status') {
         updated.grade = value === 'delivered' ? 100 : 0;
         updated.status = value as any;
       } else {
-        // If they update grade manually in binary mode (though we hide input, keeps logic safe)
         updated.status = Number(value) >= 60 ? 'delivered' : 'not_delivered';
       }
     } else if (field === 'status') {
@@ -306,7 +329,7 @@ function GradingManager({ activity, onBack }: { activity: Activity, onBack: () =
                     <p className="text-[10px] font-mono text-slate-400">{student.student_public_id}</p>
                   </td>
                   <td className="px-6 py-5">
-                    {activity.grading_mode === 'binary' ? (
+                    {activity.grading_mode === 'boolean' ? (
                        <div className="flex gap-2">
                         <button 
                           onClick={() => handleUpdateSubmission(student.id, 'status', 'delivered')}
@@ -361,7 +384,7 @@ function GradingManager({ activity, onBack }: { activity: Activity, onBack: () =
                             <span className="font-black text-blue-600">{sub?.grade || 0}</span>
                          </div>
                       </div>
-                    ) : activity.grading_mode === 'binary' ? (
+                    ) : activity.grading_mode === 'boolean' ? (
                       <div className="flex flex-col items-center">
                         <span className="text-[10px] text-slate-400 font-bold uppercase mb-1">Calificación</span>
                         <div className={cn(
@@ -490,10 +513,10 @@ function ActivityModal({ onClose, onSave, criteria }: { onClose: () => void, onS
                 </button>
                 <button 
                   type="button"
-                   onClick={() => setGradingMode('binary')}
+                   onClick={() => setGradingMode('boolean')}
                   className={cn(
                     "flex flex-col items-center gap-2 p-4 rounded-2xl border-2 transition-all",
-                    gradingMode === 'binary' ? "bg-cyan-50 border-cyan-600 text-cyan-900 shadow-sm" : "border-slate-100 text-slate-400 hover:border-slate-200"
+                    gradingMode === 'boolean' ? "bg-cyan-50 border-cyan-600 text-cyan-900 shadow-sm" : "border-slate-100 text-slate-400 hover:border-slate-200"
                   )}
                 >
                   <CheckCircle2 className="w-5 h-5" />
