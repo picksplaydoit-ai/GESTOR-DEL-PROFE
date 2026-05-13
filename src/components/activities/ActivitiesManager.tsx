@@ -16,7 +16,10 @@ import {
   Calculator,
   ShieldCheck,
   Scale,
-  Trash2
+  Trash2,
+  UserCheck,
+  UserX,
+  Save
 } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { useAppStore } from '../../store';
@@ -325,9 +328,34 @@ function GradingManager({ activity, onBack }: { activity: Activity, onBack: () =
     }
   };
 
+  const handleBulkUpdate = (action: 'all_100' | 'all_0' | 'clear' | 'all_delivered' | 'all_not_delivered') => {
+    const message = action === 'clear' 
+      ? '¿Limpiar todas las calificaciones?' 
+      : action === 'all_100' ? '¿Poner 100 a todos los alumnos?' : '¿Marcar a todos como no entregado?';
+    
+    if (!confirm(message)) return;
+
+    const newSubmissions = { ...submissions };
+    students.forEach(student => {
+      const sub = { ...newSubmissions[student.id] };
+      if (action === 'all_100' || action === 'all_delivered') {
+        sub.grade = 100;
+        sub.status = 'delivered';
+        if (activity.grading_mode === 'deliveries') sub.deliveries_count = activity.total_deliveries;
+      } else if (action === 'all_0' || action === 'all_not_delivered' || action === 'clear') {
+        sub.grade = 0;
+        sub.status = 'not_delivered';
+        sub.deliveries_count = 0;
+      }
+      newSubmissions[student.id] = sub;
+    });
+    setSubmissions(newSubmissions);
+    toast.success('Cambios aplicados localmente');
+  };
+
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div className="flex items-center gap-4">
           <button onClick={onBack} className="p-2 hover:bg-white rounded-full text-slate-400 hover:text-slate-900 border border-transparent hover:border-slate-200">
             <ChevronLeft className="w-6 h-6" />
@@ -337,14 +365,57 @@ function GradingManager({ activity, onBack }: { activity: Activity, onBack: () =
             <p className="text-sm text-slate-500">Registro de calificaciones y entregas</p>
           </div>
         </div>
-        <button 
-          onClick={saveGrades} 
-          disabled={saving}
-          className="bg-blue-600 text-white px-8 py-3 rounded-2xl font-bold shadow-xl shadow-blue-200 flex items-center gap-2 hover:bg-blue-700 disabled:opacity-50"
-        >
-          {saving ? <div className="w-5 h-5 border-2 border-white/20 border-t-white rounded-full animate-spin" /> : <MoreVertical className="w-5 h-5" />}
-          Guardar Cambios
-        </button>
+
+        <div className="flex flex-wrap items-center gap-2">
+           {activity.grading_mode === 'boolean' && (
+             <>
+               <button 
+                 onClick={() => handleBulkUpdate('all_delivered')}
+                 className="px-4 py-2 bg-green-50 text-green-700 rounded-xl text-xs font-bold hover:bg-green-100 transition-all border border-green-100 flex items-center gap-2"
+               >
+                 <UserCheck className="w-4 h-4" /> Todos Entregados
+               </button>
+               <button 
+                 onClick={() => handleBulkUpdate('all_not_delivered')}
+                 className="px-4 py-2 bg-red-50 text-red-700 rounded-xl text-xs font-bold hover:bg-red-100 transition-all border border-red-100 flex items-center gap-2"
+               >
+                 <UserX className="w-4 h-4" /> Todos Faltantes
+               </button>
+             </>
+           )}
+
+           {activity.grading_mode === 'direct' && (
+             <>
+               <button 
+                 onClick={() => handleBulkUpdate('all_100')}
+                 className="px-4 py-2 bg-blue-50 text-blue-700 rounded-xl text-xs font-bold hover:bg-blue-100 transition-all border border-blue-100 flex items-center gap-2"
+               >
+                 <CheckCircle2 className="w-4 h-4" /> Poner 100 a todos
+               </button>
+               <button 
+                 onClick={() => handleBulkUpdate('all_0')}
+                 className="px-4 py-2 bg-red-50 text-red-700 rounded-xl text-xs font-bold hover:bg-red-100 transition-all border border-red-100 flex items-center gap-2"
+               >
+                 <XCircle className="w-4 h-4" /> Poner 0 a todos
+               </button>
+               <button 
+                 onClick={() => handleBulkUpdate('clear')}
+                 className="px-4 py-2 bg-slate-50 text-slate-600 rounded-xl text-xs font-bold hover:bg-slate-100 transition-all border border-slate-200 flex items-center gap-2"
+               >
+                 <Trash2 className="w-4 h-4" /> Limpiar
+               </button>
+             </>
+           )}
+
+          <button 
+            onClick={saveGrades} 
+            disabled={saving}
+            className="bg-blue-600 text-white px-8 py-3 rounded-2xl font-bold shadow-xl shadow-blue-200 flex items-center gap-2 hover:bg-blue-700 disabled:opacity-50"
+          >
+            {saving ? <div className="w-5 h-5 border-2 border-white/20 border-t-white rounded-full animate-spin" /> : <Save className="w-5 h-5" />}
+            Guardar Cambios
+          </button>
+        </div>
       </div>
 
       <div className="bg-white rounded-3xl border border-slate-200 shadow-sm overflow-hidden">

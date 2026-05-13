@@ -22,7 +22,7 @@ import { supabase } from '../../lib/supabase';
 import { useAppStore } from '../../store';
 import { StudentGradeResult, calculateGrades } from '../../lib/grades';
 import { cn, formatGrade } from '../../lib/utils';
-import { formatLocalDate } from '../../lib/date';
+import { formatLocalDate, getMonthName, getMonthRange, getQuarterRange } from '../../lib/date';
 
 export function AnalyticsManager() {
   const { activeGroup, setView } = useAppStore();
@@ -41,13 +41,96 @@ export function AnalyticsManager() {
   const [rubric, setRubric] = useState<any>(null);
 
   // Filters
-  const [monthFilter, setMonthFilter] = useState('all');
+  const [filterType, setFilterType] = useState<'all' | 'month' | 'quarter' | 'range'>('all');
+  const [selectedMonth, setSelectedMonth] = useState(new Date().getMonth());
+  const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
+  const [selectedQuarter, setSelectedQuarter] = useState(Math.floor(new Date().getMonth() / 3) + 1);
+  const [customRange, setCustomRange] = useState({ start: '', end: '' });
 
   useEffect(() => {
     if (activeGroup) {
       fetchReportData();
     }
   }, [activeGroup]);
+
+  // Specific effect for filtering attendance
+  const [attendanceReportResults, setAttendanceReportResults] = useState<{
+    students: any[],
+    groupPercentage: number,
+    sessionsCount: number,
+    periodLabel: string
+  }>({ students: [], groupPercentage: 0, sessionsCount: 0, periodLabel: 'Todo el historial' });
+
+  useEffect(() => {
+    if (allSessions.length > 0) {
+      applyAttendanceFilter();
+    }
+  }, [allSessions, allAttendanceRecords, filterType, selectedMonth, selectedYear, selectedQuarter, customRange]);
+
+  const applyAttendanceFilter = () => {
+    let startDate: string | null = null;
+    let endDate: string | null = null;
+    let periodLabel = 'Todo el historial';
+
+    if (filterType === 'month') {
+      const range = getMonthRange(selectedYear, selectedMonth);
+      startDate = range.startDate;
+      endDate = range.endDate;
+      periodLabel = `${getMonthName(selectedMonth)} ${selectedYear}`;
+    } else if (filterType === 'quarter') {
+      const range = getQuarterRange(selectedYear, selectedQuarter);
+      startDate = range.startDate;
+      endDate = range.endDate;
+      periodLabel = `Trimestre ${selectedQuarter} (${selectedYear})`;
+    } else if (filterType === 'range') {
+      startDate = customRange.start;
+      endDate = customRange.end;
+      periodLabel = `${startDate} al ${endDate}`;
+    }
+
+    const filteredSessions = allSessions.filter(s => {
+      if (!startDate || !endDate) return true;
+      return s.date >= startDate && s.date <= endDate;
+    });
+
+    const sessionIds = filteredSessions.map(s => s.id);
+    const filteredRecords = allAttendanceRecords.filter(r => sessionIds.includes(r.session_id));
+
+    // Calculate per-student metrics
+    const studentMetrics = allStudents.map(student => {
+      const studentRecords = filteredRecords.filter(r => r.student_id === student.id);
+      const total = studentRecords.length;
+      const present = studentRecords.filter(r => r.status === 'present').length;
+      const late = studentRecords.filter(r => r.status === 'late').length;
+      const justified = studentRecords.filter(r => r.status === 'justified').length;
+      const absent = studentRecords.filter(r => r.status === 'absent').length;
+
+      // Rule: Present=1, Justified=1, Late=0.5, Absent=0
+      const valueSum = studentRecords.reduce((sum, r) => sum + r.value, 0);
+      const percentage = total > 0 ? (valueSum / total) * 100 : 100;
+
+      return {
+        ...student,
+        total,
+        present,
+        late,
+        justified,
+        absent,
+        percentage
+      };
+    });
+
+    const groupPercentage = studentMetrics.length > 0 
+      ? studentMetrics.reduce((sum, s) => sum + s.percentage, 0) / studentMetrics.length 
+      : 0;
+
+    setAttendanceReportResults({
+      students: studentMetrics,
+      groupPercentage,
+      sessionsCount: filteredSessions.length,
+      periodLabel
+    });
+  };
 
   async function fetchReportData() {
     if (!activeGroup) return;
@@ -259,29 +342,109 @@ export function AnalyticsManager() {
 
       {activeTab === 'attendance' && (
         <div className="space-y-6 animate-in fade-in slide-in-from-bottom-2 duration-300">
+           <div className="bg-white p-6 rounded-[2rem] border border-slate-200 shadow-sm flex flex-wrap items-center gap-6">
+              <div className="flex items-center gap-2 text-slate-500">
+                 <Filter className="w-4 h-4" />
+                 <span className="text-sm font-bold uppercase tracking-wider">Filtrar:</span>
+              </div>
+              
+              <div className="flex bg-slate-100 p-1 rounded-xl">
+                 {(['all', 'month', 'quarter', 'range'] as const).map(type => (
+                   <button
+                    key={type}
+                    onClick={() => setFilterType(type)}
+                    className={cn(
+                      "px-4 py-1.5 rounded-lg text-xs font-bold transition-all",
+                      filterType === type ? "bg-white text-blue-600 shadow-sm" : "text-slate-500 hover:text-slate-700"
+                    )}
+                   >
+                     {type === 'all' ? 'Histórico' : type === 'month' ? 'Mes' : type === 'quarter' ? 'Trimestre' : 'Rango'}
+                   </button>
+                 ))}
+              </div>
+
+              {filterType === 'month' && (
+                <div className="flex items-center gap-2">
+                   <select 
+                    value={selectedMonth} 
+                    onChange={(e) => setSelectedMonth(Number(e.target.value))}
+                    className="bg-slate-50 border border-slate-200 rounded-lg px-3 py-1.5 text-sm font-medium outline-none focus:ring-2 focus:ring-blue-500"
+                   >
+                     {Array.from({length: 12}).map((_, i) => (
+                       <option key={i} value={i}>{getMonthName(i)}</option>
+                     ))}
+                   </select>
+                   <select 
+                    value={selectedYear} 
+                    onChange={(e) => setSelectedYear(Number(e.target.value))}
+                    className="bg-slate-50 border border-slate-200 rounded-lg px-3 py-1.5 text-sm font-medium outline-none focus:ring-2 focus:ring-blue-500"
+                   >
+                     {[2024, 2025, 2026, 2027].map(y => <option key={y} value={y}>{y}</option>)}
+                   </select>
+                </div>
+              )}
+
+              {filterType === 'quarter' && (
+                <div className="flex items-center gap-2">
+                   <select 
+                    value={selectedQuarter} 
+                    onChange={(e) => setSelectedQuarter(Number(e.target.value))}
+                    className="bg-slate-50 border border-slate-200 rounded-lg px-3 py-1.5 text-sm font-medium outline-none focus:ring-2 focus:ring-blue-500"
+                   >
+                     {[1, 2, 3, 4].map(q => <option key={q} value={q}>Trimestre {q}</option>)}
+                   </select>
+                   <select 
+                    value={selectedYear} 
+                    onChange={(e) => setSelectedYear(Number(e.target.value))}
+                    className="bg-slate-50 border border-slate-200 rounded-lg px-3 py-1.5 text-sm font-medium outline-none focus:ring-2 focus:ring-blue-500"
+                   >
+                     {[2024, 2025, 2026, 2027].map(y => <option key={y} value={y}>{y}</option>)}
+                   </select>
+                </div>
+              )}
+
+              {filterType === 'range' && (
+                <div className="flex items-center gap-2">
+                   <input 
+                    type="date"
+                    value={customRange.start}
+                    onChange={(e) => setCustomRange({...customRange, start: e.target.value})}
+                    className="bg-slate-50 border border-slate-200 rounded-lg px-3 py-1.5 text-sm font-medium outline-none focus:ring-2 focus:ring-blue-500"
+                   />
+                   <span className="text-slate-400">a</span>
+                   <input 
+                    type="date"
+                    value={customRange.end}
+                    onChange={(e) => setCustomRange({...customRange, end: e.target.value})}
+                    className="bg-slate-50 border border-slate-200 rounded-lg px-3 py-1.5 text-sm font-medium outline-none focus:ring-2 focus:ring-blue-500"
+                   />
+                </div>
+              )}
+           </div>
+
            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
              <div className="dashboard-card p-6">
-                <p className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-4">Promedio de Asistencia</p>
+                <p className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-4">Promedio de Asistencia: {attendanceReportResults.periodLabel}</p>
                 <div className="flex items-end gap-2">
                    <p className="text-4xl font-black text-slate-900">
-                     {Math.round(results.reduce((a, b) => a + b.attendancePercentage, 0) / (results.length || 1))}%
+                     {Math.round(attendanceReportResults.groupPercentage)}%
                    </p>
                    <p className="text-slate-400 font-bold mb-1">Grupal</p>
                 </div>
              </div>
              <div className="dashboard-card p-6">
-                <p className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-4">Sesiones Registradas</p>
-                <p className="text-4xl font-black text-slate-900">{allSessions.length}</p>
+                <p className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-4">Clases en Periodo</p>
+                <p className="text-4xl font-black text-slate-900">{attendanceReportResults.sessionsCount}</p>
              </div>
              <div className="dashboard-card p-6">
                 <p className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-4">Alumnos en Riesgo (SD)</p>
-                <p className="text-4xl font-black text-red-600">{results.filter(r => r.attendancePercentage < (rubric?.min_attendance || 80)).length}</p>
+                <p className="text-4xl font-black text-red-600">{attendanceReportResults.students.filter(r => r.percentage < (rubric?.min_attendance || 80)).length}</p>
              </div>
            </div>
 
            <div className="bg-white rounded-[2.5rem] border border-slate-200 shadow-sm overflow-hidden">
                <div className="p-8 border-b border-slate-100 flex flex-col md:flex-row gap-4 justify-between items-center bg-slate-50/50">
-                  <h3 className="text-xl font-bold text-slate-900">Reporte Detallado de Asistencia</h3>
+                  <h3 className="text-xl font-bold text-slate-900">Reporte de Asistencia ({attendanceReportResults.periodLabel})</h3>
                   <div className="flex items-center gap-3 w-full md:w-auto">
                      <div className="relative flex-1 md:w-64">
                         <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
@@ -296,52 +459,49 @@ export function AnalyticsManager() {
                   </div>
                </div>
                <div className="overflow-x-auto">
-                  <table className="w-full text-left">
-                    <thead>
-                      <tr className="bg-slate-50 border-b border-slate-200">
-                        <th className="px-8 py-4 font-bold text-slate-600 text-[10px] uppercase tracking-wider">Alumno</th>
-                        <th className="px-8 py-4 font-bold text-slate-600 text-[10px] uppercase tracking-wider text-center">Total Lista</th>
-                        <th className="px-8 py-4 font-bold text-slate-600 text-[10px] uppercase tracking-wider text-center">Presente</th>
-                        <th className="px-8 py-4 font-bold text-slate-600 text-[10px] uppercase tracking-wider text-center">Falta</th>
-                        <th className="px-8 py-4 font-bold text-slate-600 text-[10px] uppercase tracking-wider text-center">Retardo</th>
-                        <th className="px-8 py-4 font-bold text-slate-600 text-[10px] uppercase tracking-wider text-center">Justificada</th>
-                        <th className="px-8 py-4 font-bold text-slate-600 text-[10px] uppercase tracking-wider text-center">% Final</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-100">
-                      {filteredResults.map(r => {
-                        const studentRecords = allAttendanceRecords.filter(ar => ar.student_id === r.student.id);
-                        return (
-                          <tr key={r.student.id} className="hover:bg-slate-50/50 transition-colors">
+                  {attendanceReportResults.sessionsCount === 0 ? (
+                    <div className="p-20 text-center text-slate-400">
+                      No hay asistencias registradas en este periodo.
+                    </div>
+                  ) : (
+                    <table className="w-full text-left">
+                      <thead>
+                        <tr className="bg-slate-50 border-b border-slate-200">
+                          <th className="px-8 py-4 font-bold text-slate-600 text-[10px] uppercase tracking-wider">Alumno</th>
+                          <th className="px-8 py-4 font-bold text-slate-600 text-[10px] uppercase tracking-wider text-center">Clases</th>
+                          <th className="px-8 py-4 font-bold text-slate-600 text-[10px] uppercase tracking-wider text-center">Pres.</th>
+                          <th className="px-8 py-4 font-bold text-slate-600 text-[10px] uppercase tracking-wider text-center">Falta</th>
+                          <th className="px-8 py-4 font-bold text-slate-600 text-[10px] uppercase tracking-wider text-center">Ret.</th>
+                          <th className="px-8 py-4 font-bold text-slate-600 text-[10px] uppercase tracking-wider text-center">Just.</th>
+                          <th className="px-8 py-4 font-bold text-slate-600 text-[10px] uppercase tracking-wider text-center">% Periodo</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100">
+                        {attendanceReportResults.students
+                          .filter(s => `${s.first_name} ${s.last_name}`.toLowerCase().includes(searchTerm.toLowerCase()))
+                          .map(r => (
+                          <tr key={r.id} className="hover:bg-slate-50/50 transition-colors">
                             <td className="px-8 py-5">
-                               <p className="font-bold text-slate-900">{r.student.last_name}, {r.student.first_name}</p>
+                               <p className="font-bold text-slate-900">{r.last_name}, {r.first_name}</p>
                             </td>
-                            <td className="px-8 py-5 text-center font-bold text-slate-600">{studentRecords.length}</td>
-                            <td className="px-8 py-5 text-center">
-                               <span className="text-green-600 font-bold">{studentRecords.filter(sr => sr.status === 'present').length}</span>
-                            </td>
-                            <td className="px-8 py-5 text-center">
-                               <span className="text-red-600 font-bold">{studentRecords.filter(sr => sr.status === 'absent').length}</span>
-                            </td>
-                            <td className="px-8 py-5 text-center">
-                               <span className="text-amber-600 font-bold">{studentRecords.filter(sr => sr.status === 'late').length}</span>
-                            </td>
-                            <td className="px-8 py-5 text-center">
-                               <span className="text-blue-600 font-bold">{studentRecords.filter(sr => sr.status === 'justified').length}</span>
-                            </td>
+                            <td className="px-8 py-5 text-center font-bold text-slate-600">{r.total}</td>
+                            <td className="px-8 py-5 text-center text-green-600 font-bold">{r.present}</td>
+                            <td className="px-8 py-5 text-center text-red-600 font-bold">{r.absent}</td>
+                            <td className="px-8 py-5 text-center text-amber-600 font-bold">{r.late}</td>
+                            <td className="px-8 py-5 text-center text-blue-600 font-bold">{r.justified}</td>
                             <td className="px-8 py-5 text-center">
                                <div className={cn(
                                  "px-3 py-1 rounded-lg font-black inline-block",
-                                 r.attendancePercentage < (rubric?.min_attendance || 80) ? "bg-red-50 text-red-700" : "bg-green-50 text-green-700"
+                                 r.percentage < (rubric?.min_attendance || 80) ? "bg-red-50 text-red-700" : "bg-green-50 text-green-700"
                                )}>
-                                 {Math.round(r.attendancePercentage)}%
+                                 {Math.round(r.percentage)}%
                                </div>
                             </td>
                           </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
+                        ))}
+                      </tbody>
+                    </table>
+                  )}
                </div>
            </div>
         </div>

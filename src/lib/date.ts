@@ -1,4 +1,4 @@
-import { format, parseISO } from 'date-fns';
+import { format, parseISO, startOfMonth, endOfMonth, startOfQuarter, endOfQuarter, setMonth, setQuarter, getYear } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { toZonedTime } from 'date-fns-tz';
 
@@ -38,4 +38,33 @@ export function toLocalDateString(date: Date | string): string {
  */
 export function getSafeLocalDate(dateStr: string): Date {
   return parseISO(dateStr);
+}
+
+/**
+ * Gets the date range for a specific month
+ */
+export function getMonthRange(year: number, month: number) {
+  const baseDate = new Date(year, month, 1);
+  return {
+    startDate: format(startOfMonth(baseDate), 'yyyy-MM-dd'),
+    endDate: format(endOfMonth(baseDate), 'yyyy-MM-dd')
+  };
+}
+
+/**
+ * Gets the date range for a specific quarter (1-4)
+ */
+export function getQuarterRange(year: number, quarter: number) {
+  const baseDate = setQuarter(new Date(year, 0, 1), quarter);
+  return {
+    startDate: format(startOfQuarter(baseDate), 'yyyy-MM-dd'),
+    endDate: format(endOfQuarter(baseDate), 'yyyy-MM-dd')
+  };
+}
+
+/**
+ * Gets the month name in Spanish
+ */
+export function getMonthName(month: number): string {
+  return format(new Date(2000, month, 1), 'MMMM', { locale: es });
 }
