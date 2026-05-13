@@ -18,6 +18,7 @@ import { TeamsManager } from './components/groups/TeamsManager';
 import { PlanningManager } from './components/planning/PlanningManager';
 import { Dashboard } from './components/dashboard/Dashboard';
 import { StudentPortal } from './components/portal/StudentPortal';
+import { LandingPage } from './components/layout/LandingPage';
 import { Loader2, Settings } from 'lucide-react';
 import { Toaster } from 'react-hot-toast';
 
@@ -26,8 +27,7 @@ export default function App() {
   const { view } = useAppStore();
   useAuth();
 
-  // Simple routing for student portal
-  const isStudentPortal = window.location.pathname === '/alumno';
+  const path = window.location.pathname;
 
   if (loading) {
     return (
@@ -37,12 +37,27 @@ export default function App() {
     );
   }
 
-  if (isStudentPortal) {
+  // Routing Logic
+  if (path === '/alumno') {
     return <StudentPortal />;
   }
 
-  if (!user) {
+  if (path === '/') {
+    if (!user) {
+      return <LandingPage />;
+    }
+  }
+
+  if (path === '/login') {
+    if (user) {
+      window.location.pathname = '/';
+      return null;
+    }
     return <AuthForm />;
+  }
+
+  if (!user) {
+    return <LandingPage />;
   }
 
   const renderView = () => {
