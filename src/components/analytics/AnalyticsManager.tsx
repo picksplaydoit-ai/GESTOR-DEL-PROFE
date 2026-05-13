@@ -16,13 +16,16 @@ import {
   CheckCircle,
   Clock,
   HelpCircle,
-  Scale
+  Scale,
+  ChevronDown
 } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { useAppStore } from '../../store';
 import { StudentGradeResult, calculateGrades } from '../../lib/grades';
 import { cn, formatGrade } from '../../lib/utils';
 import { formatLocalDate, getMonthName, getMonthRange, getQuarterRange } from '../../lib/date';
+import * as XLSX from 'xlsx';
+import { toast } from 'react-hot-toast';
 
 export function AnalyticsManager() {
   const { activeGroup, setView } = useAppStore();
@@ -39,6 +42,7 @@ export function AnalyticsManager() {
   const [allSessions, setAllSessions] = useState<any[]>([]);
   const [allStudents, setAllStudents] = useState<any[]>([]);
   const [rubric, setRubric] = useState<any>(null);
+  const [showExportMenu, setShowExportMenu] = useState(false);
 
   // Filters
   const [filterType, setFilterType] = useState<'all' | 'month' | 'quarter' | 'range'>('all');
@@ -190,6 +194,112 @@ export function AnalyticsManager() {
     }
   }
 
+  const handleExport = (format: 'csv' | 'xlsx') => {
+    if (!results.length && activeTab !== 'attendance' && activeTab !== 'missing') return;
+
+    let data: any[] = [];
+    let filename = `reporte-${activeGroup?.name || 'grupo'}-${activeTab}`;
+    const dateStr = formatLocalDate(new Date().toISOString());
+    filename += `-${dateStr}`;
+
+    if (activeTab === 'summary') {
+      data = filteredResults.map(r => {
+        const delivered = allSubmissions.filter(s => s.student_id === r.student.id && s.status === 'delivered').length;
+        const notDelivered = allActivities.length - delivered;
+        return {
+          'ID Alumno': r.student.student_public_id,
+          'Nombre Completo': `${r.student.last_name}, ${r.student.first_name}`,
+          '% Asistencia': Math.round(r.attendancePercentage),
+          'Calificación Final': formatGrade(r.finalGrade),
+          'Estatus': r.status,
+          'Ponderación Activa': `${r.activeWeightSum}%`,
+          'Actividades Entregadas': delivered,
+          'Actividades No Entregadas': notDelivered
+        };
+      });
+    } else if (activeTab === 'attendance') {
+      data = attendanceReportResults.students
+        .filter(s => `${s.first_name} ${s.last_name}`.toLowerCase().includes(searchTerm.toLowerCase()))
+        .map(r => ({
+          'ID Alumno': r.student_public_id,
+          'Nombre Completo': `${r.last_name}, ${r.first_name}`,
+          'Presentes': r.present,
+          'Faltas': r.absent,
+          'Retardos': r.late,
+          'Justificadas': r.justified,
+          'Total Clases': r.total,
+          '% Asistencia': Math.round(r.percentage),
+          'Periodo Filtrado': attendanceReportResults.periodLabel
+        }));
+    } else if (activeTab === 'grades') {
+      data = filteredResults.map(r => {
+        const row: any = {
+          'ID Alumno': r.student.student_public_id,
+          'Nombre Completo': `${r.student.last_name}, ${r.student.first_name}`,
+          'Calificación Final': formatGrade(r.finalGrade),
+          'Estatus': r.status
+        };
+        allCriteria.forEach(c => {
+          row[`${c.name} (%)`] = r.gradesByCriterion[c.id] !== undefined ? Math.round(r.gradesByCriterion[c.id]) : '-';
+          const rubroActivities = allActivities.filter(a => a.criterion_id === c.id);
+          const studentRubroSubs = allSubmissions.filter(s => s.student_id === r.student.id && rubroActivities.some(ra => ra.id === s.activity_id));
+          row[`${c.name} (Entregas)`] = `${studentRubroSubs.filter(s => s.status === 'delivered').length}/${rubroActivities.length}`;
+        });
+        return row;
+      });
+    } else if (activeTab === 'missing') {
+      data = allStudents
+        .filter(s => `${s.first_name} ${s.last_name}`.toLowerCase().includes(searchTerm.toLowerCase()))
+        .flatMap(student => {
+          return allActivities.map(activity => {
+            const sub = allSubmissions.find(sb => sb.activity_id === activity.id && sb.student_id === student.id);
+            if (!sub || sub.status === 'not_delivered' || (sub.grade === 0 && activity.grading_mode === 'boolean')) {
+              const criterion = allCriteria.find(c => c.id === activity.criterion_id);
+              return {
+                'ID Alumno': student.student_public_id,
+                'Nombre Completo': `${student.last_name}, ${student.first_name}`,
+                'Actividad': activity.name,
+                'Rubro': criterion?.name || 'N/A',
+                'Estado': 'Faltante',
+                'Calificación': sub?.grade || 0
+              };
+            }
+            return null;
+          }).filter(Boolean);
+        });
+    }
+
+    if (!data.length) {
+      toast.error('No hay datos para exportar con los filtros actuales');
+      return;
+    }
+
+    if (format === 'xlsx') {
+      const ws = XLSX.utils.json_to_sheet(data);
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, "Reporte");
+      XLSX.writeFile(wb, `${filename}.xlsx`);
+    } else {
+      const headers = Object.keys(data[0]);
+      const csvContent = [
+        headers.join(','),
+        ...data.map(row => headers.map(h => `"${row[h] || ''}"`).join(','))
+      ].join('\n');
+
+      const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.setAttribute("href", url);
+      link.setAttribute("download", `${filename}.csv`);
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    }
+
+    toast.success('Reporte exportado correctamente');
+    setShowExportMenu(false);
+  };
+
   if (!activeGroup) return null;
 
   const filteredResults = results.filter(r => 
@@ -212,11 +322,36 @@ export function AnalyticsManager() {
             <p className="text-slate-500">Grupo: <span className="font-bold text-blue-600">{activeGroup.name}</span></p>
           </div>
         </div>
-        <div className="flex items-center gap-2">
-           <button className="flex items-center gap-2 px-6 py-3 bg-white border border-slate-200 rounded-xl font-bold text-slate-600 hover:bg-slate-50 shadow-sm transition-all text-sm">
-            <Download className="w-4 h-4" />
-            Descargar PDF
-          </button>
+        <div className="flex items-center gap-2 relative">
+           <div className="relative">
+             <button 
+              onClick={() => setShowExportMenu(!showExportMenu)}
+              className="flex items-center gap-2 px-6 py-3 bg-white border border-slate-200 rounded-xl font-bold text-slate-600 hover:bg-slate-50 shadow-sm transition-all text-sm"
+             >
+              <Download className="w-4 h-4" />
+              Exportar Reporte
+              <ChevronDown className={cn("w-4 h-4 transition-transform", showExportMenu && "rotate-180")} />
+            </button>
+
+            {showExportMenu && (
+              <div className="absolute right-0 mt-2 w-48 bg-white rounded-2xl border border-slate-200 shadow-xl z-50 overflow-hidden py-1 animate-in fade-in slide-in-from-top-2">
+                 <button
+                   onClick={() => handleExport('csv')}
+                   className="w-full text-left px-4 py-3 text-sm font-bold text-slate-700 hover:bg-slate-50 flex items-center gap-3"
+                 >
+                   <FileText className="w-4 h-4 text-slate-400" />
+                   Exportar CSV
+                 </button>
+                 <button
+                   onClick={() => handleExport('xlsx')}
+                   className="w-full text-left px-4 py-3 text-sm font-bold text-slate-700 hover:bg-slate-50 flex items-center gap-3"
+                 >
+                   <BarChart3 className="w-4 h-4 text-green-500" />
+                   Exportar Excel
+                 </button>
+              </div>
+            )}
+           </div>
         </div>
       </div>
 

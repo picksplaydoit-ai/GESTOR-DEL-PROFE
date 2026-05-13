@@ -17,6 +17,7 @@ import { AnalyticsManager } from './components/analytics/AnalyticsManager';
 import { TeamsManager } from './components/groups/TeamsManager';
 import { PlanningManager } from './components/planning/PlanningManager';
 import { Dashboard } from './components/dashboard/Dashboard';
+import { StudentPortal } from './components/portal/StudentPortal';
 import { Loader2, Settings } from 'lucide-react';
 import { Toaster } from 'react-hot-toast';
 
@@ -25,12 +26,19 @@ export default function App() {
   const { view } = useAppStore();
   useAuth();
 
+  // Simple routing for student portal
+  const isStudentPortal = window.location.pathname === '/alumno';
+
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-slate-50">
         <Loader2 className="w-10 h-10 text-blue-600 animate-spin" />
       </div>
     );
+  }
+
+  if (isStudentPortal) {
+    return <StudentPortal />;
   }
 
   if (!user) {
