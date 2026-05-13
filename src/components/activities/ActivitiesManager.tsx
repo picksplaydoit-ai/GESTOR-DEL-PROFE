@@ -12,14 +12,15 @@ import {
   MoreVertical,
   Edit3,
   Search,
-  Calculator
+  Calculator,
+  ShieldCheck,
+  Scale
 } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { useAppStore } from '../../store';
 import { Activity, RubricCriterion, Student, Submission, GradingMode } from '../../types';
 import { cn } from '../../lib/utils';
-import { format } from 'date-fns';
-import { es } from 'date-fns/locale';
+import { formatLocalDate } from '../../lib/date.ts';
 
 export function ActivitiesManager() {
   const { activeGroup, setView } = useAppStore();
@@ -75,18 +76,35 @@ export function ActivitiesManager() {
 
       <div className="flex justify-between items-center bg-white p-4 rounded-2xl border border-slate-200 shadow-sm">
         <div className="flex gap-4">
-           {/* Filtros podrían ir aquí */}
+           {!loading && criteria.length === 0 && (
+             <div className="flex items-center gap-2 px-4 py-2 bg-amber-50 border border-amber-100 rounded-xl text-amber-600 text-xs font-bold animate-pulse">
+               <ShieldCheck className="w-4 h-4" />
+               Primero debes crear una rúbrica para poder crear actividades.
+             </div>
+           )}
            <div className="px-4 py-2 border border-slate-100 rounded-xl text-xs font-bold text-slate-500 uppercase tracking-widest bg-slate-50">
              Total: {activities.length}
            </div>
         </div>
-        <button
-          onClick={() => setIsModalOpen(true)}
-          className="bg-blue-600 hover:bg-blue-700 text-white px-5 py-2.5 rounded-xl font-semibold shadow-lg shadow-blue-200 flex items-center gap-2 transition-all active:scale-95"
-        >
-          <Plus className="w-5 h-5" />
-          Nueva Actividad
-        </button>
+        <div className="flex gap-3">
+          {criteria.length === 0 ? (
+            <button
+              onClick={() => setView('rubrics')}
+              className="bg-amber-600 hover:bg-amber-700 text-white px-5 py-2.5 rounded-xl font-semibold shadow-lg shadow-amber-200 flex items-center gap-2 transition-all active:scale-95"
+            >
+              <Scale className="w-5 h-5" />
+              Crear Rúbrica Ahora
+            </button>
+          ) : (
+            <button
+              onClick={() => setIsModalOpen(true)}
+              className="bg-blue-600 hover:bg-blue-700 text-white px-5 py-2.5 rounded-xl font-semibold shadow-lg shadow-blue-200 flex items-center gap-2 transition-all active:scale-95"
+            >
+              <Plus className="w-5 h-5" />
+              Nueva Actividad
+            </button>
+          )}
+        </div>
       </div>
 
       {loading ? (
@@ -142,7 +160,7 @@ export function ActivitiesManager() {
                 <div className="mt-8 pt-6 border-t border-slate-100 flex items-center justify-between">
                   <div className="flex items-center gap-2 text-slate-400 text-xs">
                     <Calendar className="w-4 h-4" />
-                    <span>{format(new Date(activity.due_date), "d 'de' MMMM", { locale: es })}</span>
+                    <span>{formatLocalDate(activity.due_date, "d 'de' MMMM")}</span>
                   </div>
                   <div className="flex items-center gap-1 text-blue-600 font-bold text-sm">
                     Calificar

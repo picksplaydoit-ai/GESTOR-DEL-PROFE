@@ -14,8 +14,7 @@ import { supabase } from '../../lib/supabase';
 import { useAppStore } from '../../store';
 import { Student, AttendanceStatus } from '../../types';
 import { cn } from '../../lib/utils';
-import { format } from 'date-fns';
-import { es } from 'date-fns/locale';
+import { getCurrentLocalDate, formatLocalDate } from '../../lib/date.ts';
 
 export function AttendanceManager() {
   const { activeGroup, setView } = useAppStore();
@@ -23,7 +22,7 @@ export function AttendanceManager() {
   const [records, setRecords] = useState<Record<string, { status: AttendanceStatus, value: number }>>({});
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [selectedDate, setSelectedDate] = useState(format(new Date(), 'yyyy-MM-dd'));
+  const [selectedDate, setSelectedDate] = useState(getCurrentLocalDate());
   const [sessionId, setSessionId] = useState<string | null>(null);
 
   useEffect(() => {
@@ -183,7 +182,7 @@ export function AttendanceManager() {
       <div className="bg-white rounded-3xl border border-slate-200 shadow-sm overflow-hidden">
         <div className="p-6 border-b border-slate-100 bg-slate-50/50 flex justify-between items-center">
            <p className="text-xs font-black text-slate-400 uppercase tracking-widest">
-             {format(new Date(selectedDate), "EEEE, d 'de' MMMM", { locale: es })}
+             {formatLocalDate(selectedDate)}
            </p>
            <div className="flex gap-4">
              <div className="flex items-center gap-1.5 text-xs font-bold text-green-600 bg-green-50 px-2 py-1 rounded">

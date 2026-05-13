@@ -31,10 +31,10 @@ export function Sidebar() {
   const groupMenuItems = [
     { id: 'dashboard', label: 'Resumen', icon: LayoutDashboard },
     { id: 'students', label: 'Alumnos', icon: Users },
-    { id: 'teams', label: 'Equipos', icon: ShieldCheck },
-    { id: 'activities', label: 'Actividades', icon: FileText },
-    { id: 'attendance', label: 'Asistencia', icon: ClipboardCheck },
     { id: 'rubrics', label: 'Rúbrica', icon: Scale },
+    { id: 'activities', label: 'Actividades', icon: FileText },
+    { id: 'teams', label: 'Equipos', icon: ShieldCheck },
+    { id: 'attendance', label: 'Asistencia', icon: ClipboardCheck },
     { id: 'analytics', label: 'Reportes', icon: BarChart3 },
   ];
 

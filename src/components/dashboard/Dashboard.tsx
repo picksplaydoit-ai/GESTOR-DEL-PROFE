@@ -7,7 +7,8 @@ import {
   CheckCircle2,
   XCircle,
   FileText,
-  Calendar
+  Calendar,
+  ChevronLeft as ChevronLeftIcon
 } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { useAppStore, useAuthStore } from '../../store';
@@ -26,6 +27,7 @@ import {
 } from 'recharts';
 import { calculateGrades, StudentGradeResult } from '../../lib/grades';
 import { cn, formatGrade } from '../../lib/utils';
+import { getCurrentLocalDate } from '../../lib/date.ts';
 
 const COLORS = ['#10b981', '#ef4444', '#f59e0b', '#3b82f6'];
 
@@ -33,7 +35,7 @@ export function Dashboard() {
   const { activeGroup, groups, setView, setActiveGroup } = useAppStore();
   const { user } = useAuthStore();
   const [loading, setLoading] = useState(true);
-  const [globalStats, setGlobalStats] = useState({ totalGroups: 0, totalStudents: 0 });
+  const [globalStats, setGlobalStats] = useState({ totalGroups: 0, totalStudents: 0, activitiesToday: 0 });
   const [groupStats, setGroupStats] = useState<StudentGradeResult[]>([]);
 
   useEffect(() => {
@@ -48,14 +50,25 @@ export function Dashboard() {
     if (!user) return;
     setLoading(true);
     try {
+      const today = getCurrentLocalDate();
+      const groupIds = groups.map(g => g.id);
+      
       const { count: studentCount } = await supabase
         .from('students')
         .select('*', { count: 'exact', head: true })
-        .in('group_id', groups.map(g => g.id));
+        .in('group_id', groupIds);
+      
+      const { data: actToday } = await supabase
+        .from('activities')
+        .select('id, due_date')
+        .in('group_id', groupIds);
+
+      const countToday = actToday?.filter(a => a.due_date.startsWith(today)).length || 0;
       
       setGlobalStats({
         totalGroups: groups.length,
-        totalStudents: studentCount || 0
+        totalStudents: studentCount || 0,
+        activitiesToday: countToday
       });
     } catch (error) {
       console.error('Error fetching global stats:', error);
@@ -125,7 +138,7 @@ export function Dashboard() {
         {[
           { label: 'Mis Grupos', value: globalStats.totalGroups, icon: GraduationCap, color: 'blue' },
           { label: 'Total Alumnos', value: globalStats.totalStudents, icon: Users, color: 'indigo' },
-          { label: 'Actividades Hoy', value: 0, icon: Calendar, color: 'amber' },
+          { label: 'Actividades Hoy', value: globalStats.activitiesToday, icon: Calendar, color: 'amber' },
           { label: 'Reportes Pendientes', value: globalStats.totalGroups, icon: FileText, color: 'purple' },
         ].map((stat, i) => (
           <div key={i} className="dashboard-card p-6 flex items-center gap-4 border-none shadow-indigo-100/50">
@@ -164,7 +177,7 @@ export function Dashboard() {
                        <p className="text-xs text-slate-500">{g.subject}</p>
                     </div>
                   </div>
-                  <ChevronLeft className="w-5 h-5 rotate-180 text-slate-300 group-hover:text-blue-600" />
+                  <ChevronLeftIcon className="w-5 h-5 rotate-180 text-slate-300 group-hover:text-blue-600" />
                 </button>
              ))}
            </div>
@@ -319,6 +332,3 @@ function GroupDashboard({ stats, loading, groupName }: { stats: StudentGradeResu
   );
 }
 
-function ChevronLeft({ className }: { className?: string }) {
-  return <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="m15 18-6-6 6-6"/></svg>;
-}
