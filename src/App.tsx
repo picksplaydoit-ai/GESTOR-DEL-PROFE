@@ -18,6 +18,7 @@ import { TeamsManager } from './components/groups/TeamsManager';
 import { PlanningManager } from './components/planning/PlanningManager';
 import { Dashboard } from './components/dashboard/Dashboard';
 import { Loader2, Settings } from 'lucide-react';
+import { Toaster } from 'react-hot-toast';
 
 export default function App() {
   const { loading, user } = useAuthStore();
@@ -75,6 +76,7 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-slate-50">
+      <Toaster position="top-right" />
       <Sidebar />
       <main className="pl-64 min-h-screen">
         <div className="p-8 max-w-7xl mx-auto">

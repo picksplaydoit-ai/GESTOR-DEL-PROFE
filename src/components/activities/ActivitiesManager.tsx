@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { toast } from 'react-hot-toast';
 import { 
   Plus, 
   Calendar, 
@@ -30,6 +31,7 @@ export function ActivitiesManager() {
   const [loading, setLoading] = useState(true);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [selectedActivity, setSelectedActivity] = useState<Activity | null>(null);
+  const [deletingActivityId, setDeletingActivityId] = useState<string | null>(null);
 
   useEffect(() => {
     if (activeGroup) {
@@ -55,15 +57,16 @@ export function ActivitiesManager() {
   }
 
   const handleDeleteActivity = async (id: string) => {
-    if (!confirm('¿Seguro que quieres eliminar esta actividad? Se perderán todas las calificaciones registradas.')) return;
     setLoading(true);
     try {
       const { error } = await supabase.from('activities').delete().eq('id', id);
       if (error) throw error;
+      setDeletingActivityId(null);
+      toast.success('Actividad eliminada correctamente');
       fetchData();
     } catch (error) {
       console.error('Error deleting activity:', error);
-      alert('Error al eliminar la actividad');
+      toast.error('No se pudo eliminar la actividad');
     } finally {
       setLoading(false);
     }
@@ -159,7 +162,7 @@ export function ActivitiesManager() {
                       {activity.status === 'active' ? 'Activa' : 'Cerrada'}
                     </div>
                     <button 
-                      onClick={(e) => { e.stopPropagation(); handleDeleteActivity(activity.id); }}
+                      onClick={(e) => { e.stopPropagation(); setDeletingActivityId(activity.id); }}
                       className="p-1.5 text-slate-300 hover:text-red-500 hover:bg-red-50 rounded-lg transition-all"
                     >
                       <Trash2 className="w-4 h-4" />
@@ -203,6 +206,38 @@ export function ActivitiesManager() {
       )}
 
       {isModalOpen && <ActivityModal onClose={() => setIsModalOpen(false)} onSave={fetchData} criteria={criteria} />}
+
+      {deletingActivityId && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-[2.5rem] w-full max-w-md shadow-2xl overflow-hidden animate-in zoom-in duration-200">
+            <div className="p-8 text-center space-y-6">
+              <div className="w-20 h-20 bg-red-50 rounded-full flex items-center justify-center mx-auto text-red-600">
+                <Trash2 className="w-10 h-10" />
+              </div>
+              <div className="space-y-2">
+                <h3 className="text-2xl font-bold text-slate-900">¿Eliminar actividad?</h3>
+                <p className="text-slate-500">Esta acción eliminará permanentemente la actividad y todas las calificaciones de los alumnos asociadas a ella.</p>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <button 
+                  onClick={() => setDeletingActivityId(null)}
+                  className="px-4 py-3 bg-slate-50 text-slate-600 rounded-2xl font-bold hover:bg-slate-100 transition-all"
+                >
+                  Cancelar
+                </button>
+                <button 
+                  onClick={() => handleDeleteActivity(deletingActivityId)}
+                  disabled={loading}
+                  className="px-4 py-3 bg-red-600 text-white rounded-2xl font-bold hover:bg-red-700 shadow-lg shadow-red-100 transition-all flex items-center justify-center"
+                >
+                  {loading ? <div className="w-5 h-5 border-2 border-white/20 border-t-white rounded-full animate-spin" /> : 'Eliminar'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -248,10 +283,10 @@ function GradingManager({ activity, onBack }: { activity: Activity, onBack: () =
   const handleUpdateSubmission = (studentId: string, field: keyof Submission, value: any) => {
     const updated = { ...submissions[studentId], [field]: value };
     
-    // Auto-calculate grade if in deliveries mode
+    // Auto-calculate grade and status based on mode
     if (activity.grading_mode === 'deliveries' && field === 'deliveries_count') {
       const count = Number(value) || 0;
-      updated.grade = Math.round((count / activity.total_deliveries) * 100);
+      updated.grade = Math.round((count / (activity.total_deliveries || 1)) * 100);
       updated.status = count > 0 ? 'delivered' : 'not_delivered';
     } else if (activity.grading_mode === 'boolean' && (field === 'status' || field === 'grade')) {
       if (field === 'status') {
@@ -260,6 +295,10 @@ function GradingManager({ activity, onBack }: { activity: Activity, onBack: () =
       } else {
         updated.status = Number(value) >= 60 ? 'delivered' : 'not_delivered';
       }
+    } else if (activity.grading_mode === 'direct' && field === 'grade') {
+      const grade = Number(value) || 0;
+      updated.grade = grade;
+      updated.status = grade > 0 ? 'delivered' : 'not_delivered';
     } else if (field === 'status') {
       if (value === 'not_delivered') updated.grade = 0;
     }
@@ -277,9 +316,10 @@ function GradingManager({ activity, onBack }: { activity: Activity, onBack: () =
 
       const { error } = await supabase.from('submissions').upsert(dataToUpsert);
       if (error) throw error;
-      alert('Calificaciones guardadas correctamente');
+      toast.success('Calificaciones guardadas');
     } catch (error) {
       console.error('Error saving grades:', error);
+      toast.error('Error al guardar calificaciones');
     } finally {
       setSaving(false);
     }
@@ -312,11 +352,16 @@ function GradingManager({ activity, onBack }: { activity: Activity, onBack: () =
           <thead>
             <tr className="bg-slate-50 border-b border-slate-200">
               <th className="px-6 py-4 font-bold text-slate-600 text-xs uppercase tracking-wider">Alumno</th>
-              <th className="px-6 py-4 font-bold text-slate-600 text-xs uppercase tracking-wider">Estatus Entrega</th>
-              <th className="px-6 py-4 font-bold text-slate-600 text-xs uppercase tracking-wider">
-                {activity.grading_mode === 'deliveries' ? 'Entregas / Total' : 'Calificación'}
-              </th>
-              {!activity.grading_mode && <th className="px-6 py-4 font-bold text-slate-600 text-xs uppercase tracking-wider">Puntos / 100</th>}
+              {activity.grading_mode === 'boolean' ? (
+                <th colSpan={2} className="px-6 py-4 font-bold text-slate-600 text-xs uppercase tracking-wider text-center">Evaluación</th>
+              ) : (
+                <>
+                  <th className="px-6 py-4 font-bold text-slate-600 text-xs uppercase tracking-wider text-center">
+                    {activity.grading_mode === 'deliveries' ? 'Entregas / Total' : 'Calificación (0-100)'}
+                  </th>
+                  <th className="px-6 py-4 font-bold text-slate-600 text-xs uppercase tracking-wider text-center">Resultado</th>
+                </>
+              )}
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100">
@@ -328,88 +373,88 @@ function GradingManager({ activity, onBack }: { activity: Activity, onBack: () =
                     <p className="font-bold text-slate-900">{student.last_name}, {student.first_name}</p>
                     <p className="text-[10px] font-mono text-slate-400">{student.student_public_id}</p>
                   </td>
-                  <td className="px-6 py-5">
-                    {activity.grading_mode === 'boolean' ? (
-                       <div className="flex gap-2">
-                        <button 
-                          onClick={() => handleUpdateSubmission(student.id, 'status', 'delivered')}
-                          className={cn(
-                            "flex-1 px-4 py-2 rounded-xl font-bold text-xs transition-all",
-                            sub?.status === 'delivered' ? "bg-green-600 text-white shadow-lg shadow-green-100" : "bg-slate-50 text-slate-400 hover:bg-slate-100"
-                          )}
-                        >
-                          Entregado
-                        </button>
-                        <button 
-                          onClick={() => handleUpdateSubmission(student.id, 'status', 'not_delivered')}
-                          className={cn(
-                            "flex-1 px-4 py-2 rounded-xl font-bold text-xs transition-all",
-                            sub?.status === 'not_delivered' ? "bg-red-600 text-white shadow-lg shadow-red-100" : "bg-slate-50 text-slate-400 hover:bg-slate-100"
-                          )}
-                        >
-                          No entregado
-                        </button>
-                      </div>
-                    ) : (
-                      <select 
-                        value={sub?.status || 'not_delivered'}
-                        onChange={(e) => handleUpdateSubmission(student.id, 'status', e.target.value)}
-                        className={cn(
-                          "text-xs font-bold px-3 py-1.5 rounded-lg border focus:ring-2 focus:ring-blue-500 outline-none transition-all w-full",
-                          sub?.status === 'delivered' ? "bg-green-50 text-green-700 border-green-200" :
-                          sub?.status === 'late' ? "bg-amber-50 text-amber-700 border-amber-200" :
-                          "bg-red-50 text-red-700 border-red-200"
-                        )}
-                      >
-                        <option value="delivered">Entregado</option>
-                        <option value="late">Entrega Tardía</option>
-                        <option value="not_delivered">No entregado</option>
-                      </select>
-                    )}
-                  </td>
-                  <td className="px-6 py-5">
-                    {activity.grading_mode === 'deliveries' ? (
-                      <div className="flex items-center gap-2">
-                         <input 
-                            type="number" 
-                            min="0"
-                            max={activity.total_deliveries}
-                            value={sub?.deliveries_count || 0}
-                            onChange={(e) => handleUpdateSubmission(student.id, 'deliveries_count', e.target.value)}
-                            className="w-16 px-2 py-2 bg-slate-50 border border-slate-200 rounded-lg text-center font-bold"
-                         />
-                         <span className="text-slate-400 font-medium">/ {activity.total_deliveries}</span>
-                         <div className="ml-4 flex flex-col">
-                            <span className="text-[10px] text-slate-400 font-bold uppercase">Calificación</span>
-                            <span className="font-black text-blue-600">{sub?.grade || 0}</span>
-                         </div>
-                      </div>
-                    ) : activity.grading_mode === 'boolean' ? (
-                      <div className="flex flex-col items-center">
-                        <span className="text-[10px] text-slate-400 font-bold uppercase mb-1">Calificación</span>
+                  
+                  {activity.grading_mode === 'boolean' ? (
+                    <td colSpan={2} className="px-6 py-5">
+                      <div className="flex items-center justify-center gap-8">
+                        <div className="flex gap-2 min-w-[300px]">
+                          <button 
+                            onClick={() => handleUpdateSubmission(student.id, 'status', 'delivered')}
+                            className={cn(
+                              "flex-1 px-4 py-3 rounded-xl font-bold text-sm transition-all border-2",
+                              sub?.status === 'delivered' ? "bg-green-600 border-green-600 text-white shadow-lg shadow-green-100" : "bg-white border-slate-100 text-slate-400 hover:border-slate-200"
+                            )}
+                          >
+                            Entregado
+                          </button>
+                          <button 
+                            onClick={() => handleUpdateSubmission(student.id, 'status', 'not_delivered')}
+                            className={cn(
+                              "flex-1 px-4 py-3 rounded-xl font-bold text-sm transition-all border-2",
+                              sub?.status === 'not_delivered' ? "bg-red-600 border-red-600 text-white shadow-lg shadow-red-100" : "bg-white border-slate-100 text-slate-400 hover:border-slate-200"
+                            )}
+                          >
+                            No entregado
+                          </button>
+                        </div>
                         <div className={cn(
-                          "px-4 py-2 rounded-xl font-black text-lg border min-w-[80px] text-center",
+                          "px-6 py-3 rounded-2xl font-black text-2xl border min-w-[100px] text-center",
                           (sub?.grade || 0) === 100 ? "bg-green-50 text-green-700 border-green-200" : "bg-red-50 text-red-700 border-red-200"
                         )}>
                           {sub?.grade || 0}
                         </div>
                       </div>
-                    ) : (
-                      <div className="relative w-24 mx-auto">
-                        <input 
-                          type="number"
-                          min="0"
-                          max="100"
-                          value={sub?.grade || 0}
-                          onChange={(e) => handleUpdateSubmission(student.id, 'grade', e.target.value)}
-                          className={cn(
-                            "w-full px-4 py-2 rounded-xl font-black text-center text-lg border outline-none transition-all",
+                    </td>
+                  ) : (
+                    <>
+                      <td className="px-6 py-5 flex justify-center">
+                        {activity.grading_mode === 'deliveries' ? (
+                          <div className="flex items-center gap-3">
+                             <input 
+                                type="number" 
+                                min="0"
+                                max={activity.total_deliveries}
+                                value={sub?.deliveries_count || 0}
+                                onChange={(e) => handleUpdateSubmission(student.id, 'deliveries_count', e.target.value)}
+                                className="w-20 px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-center font-bold text-lg focus:ring-2 focus:ring-amber-500 outline-none"
+                             />
+                             <span className="text-slate-400 font-bold text-lg">/ {activity.total_deliveries}</span>
+                          </div>
+                        ) : (
+                          <div className="relative w-32">
+                            <input 
+                              type="number"
+                              min="0"
+                              max="100"
+                              value={sub?.grade || 0}
+                              onChange={(e) => handleUpdateSubmission(student.id, 'grade', e.target.value)}
+                              className={cn(
+                                "w-full px-4 py-3 rounded-xl font-black text-center text-xl border outline-none transition-all focus:ring-2 focus:ring-blue-500",
+                                (sub?.grade || 0) >= 60 ? "bg-green-50 border-green-200 text-green-700" : "bg-red-50 border-red-200 text-red-700"
+                              )}
+                            />
+                            <span className="absolute -top-3 left-1/2 -translate-x-1/2 bg-white px-2 py-0.5 rounded text-[8px] font-black uppercase text-slate-400 border border-slate-100">Grade</span>
+                          </div>
+                        )}
+                      </td>
+                      <td className="px-6 py-5">
+                        <div className="flex flex-col items-center">
+                          <div className={cn(
+                            "px-4 py-2 rounded-xl font-black text-lg border min-w-[80px] text-center",
                             (sub?.grade || 0) >= 60 ? "bg-green-50 text-green-700 border-green-200" : "bg-red-50 text-red-700 border-red-200"
-                          )}
-                        />
-                      </div>
-                    )}
-                  </td>
+                          )}>
+                            {sub?.grade || 0}
+                          </div>
+                          <span className={cn(
+                            "text-[10px] font-bold uppercase mt-1",
+                            sub?.status === 'delivered' ? "text-green-600" : "text-red-500"
+                          )}>
+                            {sub?.status === 'delivered' ? 'Suficiente' : 'Insuficiente'}
+                          </span>
+                        </div>
+                      </td>
+                    </>
+                  )}
                 </tr>
               );
             })}
@@ -445,10 +490,12 @@ function ActivityModal({ onClose, onSave, criteria }: { onClose: () => void, onS
       }]);
 
       if (error) throw error;
+      toast.success('Actividad creada con éxito');
       onSave();
       onClose();
     } catch (error) {
       console.error('Error saving activity:', error);
+      toast.error('Error al crear la actividad');
     } finally {
       setLoading(false);
     }

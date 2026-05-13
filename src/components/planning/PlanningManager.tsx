@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { toast } from 'react-hot-toast';
 import { 
   Plus, 
   Search, 
@@ -88,6 +89,7 @@ export function PlanningManager() {
   const [searchTerm, setSearchTerm] = useState('');
   const [filterUnit, setFilterUnit] = useState<string>('all');
   const [filterVisibility, setFilterVisibility] = useState<string>('all');
+  const [deletingMaterial, setDeletingMaterial] = useState<{id: string, filePath?: string} | null>(null);
 
   useEffect(() => {
     fetchMaterials();
@@ -115,8 +117,7 @@ export function PlanningManager() {
   }
 
   const handleDeleteMaterial = async (id: string, filePath?: string) => {
-    if (!confirm('¿Seguro que quieres eliminar este material?')) return;
-    
+    setLoading(true);
     try {
       // 1. Delete file from storage if exists
       if (filePath) {
@@ -130,10 +131,14 @@ export function PlanningManager() {
         .eq('id', id);
 
       if (error) throw error;
+      setDeletingMaterial(null);
+      toast.success('Recurso eliminado');
       fetchMaterials();
     } catch (error) {
       console.error('Error deleting material:', error);
-      alert('Error al eliminar el material');
+      toast.error('Error al eliminar');
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -283,7 +288,7 @@ export function PlanningManager() {
                       setEditingMaterial(material);
                       setIsModalOpen(true);
                     }}
-                    onDelete={() => handleDeleteMaterial(material.id, material.file_path)}
+                    onDelete={() => setDeletingMaterial({id: material.id, filePath: material.file_path})}
                     onToggleVisibility={(v) => handleToggleVisibility(material, v)}
                     delay={idx * 50}
                   />
@@ -309,7 +314,7 @@ export function PlanningManager() {
                           setEditingMaterial(material);
                           setIsModalOpen(true);
                         }}
-                        onDelete={() => handleDeleteMaterial(material.id, material.file_path)}
+                        onDelete={() => setDeletingMaterial({id: material.id, filePath: material.file_path})}
                         onToggleVisibility={(v) => handleToggleVisibility(material, v)}
                       />
                     ))}
@@ -327,6 +332,38 @@ export function PlanningManager() {
           onSave={fetchMaterials} 
           editingMaterial={editingMaterial}
         />
+      )}
+
+      {deletingMaterial && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-[2.5rem] w-full max-w-md shadow-2xl overflow-hidden animate-in zoom-in duration-200">
+            <div className="p-8 text-center space-y-6">
+              <div className="w-20 h-20 bg-red-50 rounded-full flex items-center justify-center mx-auto text-red-600">
+                <Trash2 className="w-10 h-10" />
+              </div>
+              <div className="space-y-2">
+                <h3 className="text-2xl font-bold text-slate-900">¿Eliminar material?</h3>
+                <p className="text-slate-500">Esta acción eliminará el registro y el archivo asociado de forma permanente.</p>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <button 
+                  onClick={() => setDeletingMaterial(null)}
+                  className="px-4 py-3 bg-slate-50 text-slate-600 rounded-2xl font-bold hover:bg-slate-100 transition-all"
+                >
+                  Cancelar
+                </button>
+                <button 
+                  onClick={() => handleDeleteMaterial(deletingMaterial.id, deletingMaterial.filePath)}
+                  disabled={loading}
+                  className="px-4 py-3 bg-red-600 text-white rounded-2xl font-bold hover:bg-red-700 shadow-lg shadow-red-100 transition-all flex items-center justify-center"
+                >
+                  {loading ? <div className="w-5 h-5 border-2 border-white/20 border-t-white rounded-full animate-spin" /> : 'Eliminar Recurso'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );
@@ -621,14 +658,16 @@ function MaterialModal({ onClose, onSave, editingMaterial }: any) {
       
       if (visibility === 'published' && !editingMaterial?.activity_id) {
         setLoading(false);
+        toast.success(editingMaterial ? 'Cambios guardados' : 'Material creado');
         setShowActivityConfirm(true);
       } else {
+        toast.success(editingMaterial ? 'Cambios guardados' : 'Material creado');
         onSave();
         onClose();
       }
     } catch (error) {
       console.error('Error saving material:', error);
-      alert('Error al guardar el material');
+      toast.error('Error al guardar material');
       setLoading(false);
     }
   };
@@ -882,10 +921,11 @@ function CreateActivityFromMaterial({ materialId, onSave, onClose }: { materialI
 
       if (mError) throw mError;
 
+      toast.success('¡Actividad generada con éxito!');
       onSave();
     } catch (error) {
       console.error('Error converting to activity:', error);
-      alert('Error al crear la actividad');
+      toast.error('Error al generar actividad');
     } finally {
       setLoading(false);
     }

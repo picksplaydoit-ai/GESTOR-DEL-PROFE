@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { toast } from 'react-hot-toast';
 import { Plus, Search, MoreVertical, GraduationCap, Calendar, BookOpen, ChevronRight, Trash2, Edit2, AlertTriangle } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { useAppStore, useAuthStore } from '../../store';
@@ -50,11 +51,12 @@ export function GroupsList() {
         .eq('id', id);
 
       if (error) throw error;
+      toast.success('Grupo eliminado correctamente');
       fetchGroups();
       setDeletingGroupId(null);
     } catch (error) {
       console.error('Error deleting group:', error);
-      alert('Error al eliminar el grupo. Inténtalo de nuevo.');
+      toast.error('No se pudo eliminar el grupo');
     } finally {
       setLoading(false);
     }
@@ -243,16 +245,18 @@ function GroupModal({ onClose, onSave, editingGroup }: { onClose: () => void; on
           .update(groupData)
           .eq('id', editingGroup.id);
         if (error) throw error;
+        toast.success('Grupo actualizado');
       } else {
         const { error } = await supabase.from('groups').insert([groupData]);
         if (error) throw error;
+        toast.success('Grupo creado');
       }
 
       onSave();
       onClose();
     } catch (error) {
       console.error('Error saving group:', error);
-      alert('Error al guardar el grupo.');
+      toast.error('Error al guardar el grupo');
     } finally {
       setLoading(false);
     }
