@@ -77,7 +77,7 @@ export function AttendanceManager() {
 
       // If no records, initialize all as present
       if (Object.keys(records).length === 0) {
-        const initial: Record<string, any> = {};
+        const initial: Record<string, { status: AttendanceStatus, value: number }> = {};
         studentData?.forEach(s => {
           initial[s.id] = { status: 'present', value: 1 };
         });
@@ -122,7 +122,7 @@ export function AttendanceManager() {
       }
 
       // 2. Upsert records
-      const recordsToUpsert = Object.entries(records).map(([studentId, data]) => ({
+      const recordsToUpsert = (Object.entries(records) as [string, { status: AttendanceStatus, value: number }][]).map(([studentId, data]) => ({
         session_id: currentSessionId,
         student_id: studentId,
         status: data.status,
@@ -188,11 +188,11 @@ export function AttendanceManager() {
            <div className="flex gap-4">
              <div className="flex items-center gap-1.5 text-xs font-bold text-green-600 bg-green-50 px-2 py-1 rounded">
                <CheckCircle2 className="w-3 h-3" />
-               {Object.values(records).filter(r => r.status === 'present').length} Presentes
+               {(Object.values(records) as { status: AttendanceStatus, value: number }[]).filter(r => r.status === 'present').length} Presentes
              </div>
              <div className="flex items-center gap-1.5 text-xs font-bold text-red-600 bg-red-50 px-2 py-1 rounded">
                <XCircle className="w-3 h-3" />
-               {Object.values(records).filter(r => r.status === 'absent').length} Faltas
+               {(Object.values(records) as { status: AttendanceStatus, value: number }[]).filter(r => r.status === 'absent').length} Faltas
              </div>
            </div>
         </div>

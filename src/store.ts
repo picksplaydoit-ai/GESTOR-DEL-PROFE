@@ -21,7 +21,7 @@ export const useAuthStore = create<AuthState>((set) => ({
   signOut: () => set({ user: null, profile: null }),
 }));
 
-export type View = 'dashboard' | 'groups' | 'group-detail' | 'students' | 'teams' | 'activities' | 'attendance' | 'rubrics' | 'analytics';
+export type View = 'dashboard' | 'groups' | 'group-detail' | 'students' | 'teams' | 'activities' | 'attendance' | 'rubrics' | 'analytics' | 'settings';
 
 interface AppState {
   view: View;

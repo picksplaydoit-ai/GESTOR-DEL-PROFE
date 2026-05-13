@@ -16,7 +16,7 @@ import { AttendanceManager } from './components/attendance/AttendanceManager';
 import { AnalyticsManager } from './components/analytics/AnalyticsManager';
 import { TeamsManager } from './components/groups/TeamsManager';
 import { Dashboard } from './components/dashboard/Dashboard';
-import { Loader2 } from 'lucide-react';
+import { Loader2, Settings } from 'lucide-react';
 
 export default function App() {
   const { loading, user } = useAuthStore();
@@ -53,8 +53,20 @@ export default function App() {
         return <RubricManager />;
       case 'analytics':
         return <AnalyticsManager />;
-      default:
-        return <div>Sección en construcción...</div>;
+      case 'settings':
+        return (
+          <div className="space-y-6 animate-in fade-in duration-500">
+            <div>
+              <h1 className="text-3xl font-display font-bold text-slate-900">Configuración</h1>
+              <p className="text-slate-500">Gestiona tus preferencias y ajustes de cuenta.</p>
+            </div>
+            <div className="bg-white rounded-3xl p-12 border border-slate-200 text-center">
+              <Settings className="w-16 h-16 text-slate-200 mx-auto mb-6" />
+              <h3 className="text-xl font-bold text-slate-900 mb-2">Sección en Desarrollo</h3>
+              <p className="text-slate-500 max-w-sm mx-auto">Próximamente podrás configurar tu perfil, cambiar tu contraseña y ajustar las preferencias de notificaciones.</p>
+            </div>
+          </div>
+        );
     }
   };
 

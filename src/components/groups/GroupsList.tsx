@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Plus, Search, MoreVertical, GraduationCap, Calendar, BookOpen } from 'lucide-react';
+import { Plus, Search, MoreVertical, GraduationCap, Calendar, BookOpen, ChevronRight } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { useAppStore, useAuthStore } from '../../store';
 import { Group } from '../../types';
@@ -79,8 +79,7 @@ export function GroupsList() {
           {groups.map((group) => (
             <div
               key={group.id}
-              onClick={() => handleSelectGroup(group)}
-              className="dashboard-card p-6 flex flex-col cursor-pointer group"
+              className="dashboard-card p-6 flex flex-col group hover:border-blue-200 transition-all"
             >
               <div className="flex justify-between items-start mb-6">
                 <div className="w-12 h-12 bg-blue-50 rounded-xl flex items-center justify-center text-blue-600 group-hover:bg-blue-600 group-hover:text-white transition-colors duration-300">
@@ -105,6 +104,14 @@ export function GroupsList() {
                   {group.school_year}
                 </div>
               </div>
+
+              <button 
+                onClick={() => handleSelectGroup(group)}
+                className="w-full mt-6 bg-slate-900 text-white py-3 rounded-xl font-bold hover:bg-blue-600 transition-all active:scale-95 flex items-center justify-center gap-2"
+              >
+                Entrar al grupo
+                <ChevronRight className="w-4 h-4" />
+              </button>
             </div>
           ))}
         </div>
