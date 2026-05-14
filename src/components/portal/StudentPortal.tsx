@@ -21,6 +21,7 @@ import { calculateGrades, StudentGradeResult } from '../../lib/grades';
 import { cn, formatGrade } from '../../lib/utils';
 import { Student, Group, Rubric, RubricCriterion, Activity, Submission, CourseMaterial, AttendanceStatus } from '../../types';
 import { formatLocalDate, getMonthName, getMonthRange, getQuarterRange } from '../../lib/date';
+import { MaterialViewer } from '../common/MaterialViewer';
 
 export function StudentPortal() {
   const [loading, setLoading] = useState(false);
@@ -29,6 +30,7 @@ export function StudentPortal() {
   const [enrollmentId, setEnrollmentId] = useState('');
   const [portalData, setPortalData] = useState<any>(null);
   const [grades, setGrades] = useState<StudentGradeResult | null>(null);
+  const [selectedMaterial, setSelectedMaterial] = useState<CourseMaterial | null>(null);
 
   // Attendance Filters
   const [attFilterType, setAttFilterType] = useState<'all' | 'month' | 'quarter' | 'range'>('all');
@@ -616,24 +618,22 @@ export function StudentPortal() {
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {materials && materials.length > 0 ? (
               materials.map((m: CourseMaterial) => (
-                <a 
+                <button 
                   key={m.id} 
-                  href={m.external_link || m.file_url} 
-                  target="_blank" 
-                  rel="noreferrer"
-                  className="bg-white p-6 rounded-3xl border border-slate-200 hover:border-blue-500 hover:shadow-lg transition-all flex items-center justify-between group"
+                  onClick={() => setSelectedMaterial(m)}
+                  className="bg-white p-6 rounded-3xl border border-slate-200 hover:border-blue-500 hover:shadow-lg transition-all flex items-center justify-between group text-left w-full"
                 >
                   <div className="flex items-center gap-4">
                     <div className="w-12 h-12 bg-slate-50 rounded-2xl flex items-center justify-center text-slate-400 group-hover:bg-blue-50 group-hover:text-blue-600 transition-colors">
                       <FileText className="w-6 h-6" />
                     </div>
                     <div>
-                      <h4 className="font-bold text-slate-900">{m.title}</h4>
+                      <h4 className="font-bold text-slate-900 line-clamp-1">{m.title}</h4>
                       <p className="text-xs text-slate-400 font-bold uppercase">{m.material_type} • Sem. {m.week}</p>
                     </div>
                   </div>
-                  <ExternalLink className="w-5 h-5 text-slate-300 group-hover:text-blue-600 transition-colors" />
-                </a>
+                  <ChevronRight className="w-5 h-5 text-slate-300 group-hover:text-blue-600 group-hover:translate-x-1 transition-all" />
+                </button>
               ))
             ) : (
               <div className="col-span-full bg-slate-100 p-10 rounded-[2rem] text-center border-2 border-dashed border-slate-200">
@@ -643,6 +643,14 @@ export function StudentPortal() {
             )}
           </div>
         </section>
+
+        {selectedMaterial && (
+          <MaterialViewer 
+            material={selectedMaterial} 
+            onClose={() => setSelectedMaterial(null)}
+            isPortal={true}
+          />
+        )}
       </div>
     </div>
   );

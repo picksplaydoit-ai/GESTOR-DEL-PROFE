@@ -35,6 +35,7 @@ import {
   Monitor,
   Code
 } from 'lucide-react';
+import { MaterialViewer } from '../common/MaterialViewer';
 import { supabase } from '../../lib/supabase';
 import { useAppStore, useAuthStore } from '../../store';
 import { CourseMaterial, MaterialVisibility } from '../../types';
@@ -53,7 +54,8 @@ const MATERIAL_TYPES = [
   { id: 'practice', label: 'Práctica', icon: Zap, color: 'text-cyan-500 bg-cyan-50' },
   { id: 'guide', label: 'Guía', icon: Bookmark, color: 'text-lime-500 bg-lime-50' },
   { id: 'instruction', label: 'Instrucciones', icon: FileCode, color: 'text-pink-500 bg-pink-50' },
-  { id: 'html', label: 'Interactivo HTML', icon: Code, color: 'text-orange-600 bg-orange-50' },
+  { id: 'html', label: 'HTML', icon: Code, color: 'text-orange-600 bg-orange-50' },
+  { id: 'interactive_html', label: 'Interactivo', icon: Monitor, color: 'text-indigo-600 bg-indigo-50' },
   { id: 'other', label: 'Otro', icon: MoreHorizontal, color: 'text-slate-400 bg-slate-50' },
 ];
 
@@ -176,11 +178,14 @@ export function PlanningManager() {
 
   if (activeMaterialId) {
     const activeMaterial = materials.find(m => m.id === activeMaterialId);
+    if (!activeMaterial) return null;
     return (
-      <MaterialViewer 
-        material={activeMaterial} 
-        onBack={() => setActiveMaterialId(null)} 
-      />
+      <div className="h-[calc(100vh-120px)]">
+        <MaterialViewer 
+          material={activeMaterial} 
+          onClose={() => setActiveMaterialId(null)} 
+        />
+      </div>
     );
   }
 
@@ -374,7 +379,7 @@ function MaterialCard({ material, onEdit, onDelete, onToggleVisibility, delay }:
   const typeInfo = MATERIAL_TYPES.find(t => t.id === material.material_type) || MATERIAL_TYPES[MATERIAL_TYPES.length - 1];
   const Icon = typeInfo.icon;
 
-  const isHtml = material.material_type === 'html';
+  const isHtml = material.material_type === 'html' || material.material_type === 'interactive_html';
 
   const getVisibilityConfig = (visibility: MaterialVisibility) => {
     switch (visibility) {
@@ -488,7 +493,7 @@ function MaterialRow({ material, onEdit, onDelete, onToggleVisibility }: any) {
   const { setActiveMaterialId } = useAppStore();
   const typeInfo = MATERIAL_TYPES.find(t => t.id === material.material_type) || MATERIAL_TYPES[MATERIAL_TYPES.length - 1];
   const Icon = typeInfo.icon;
-  const isHtml = material.material_type === 'html';
+  const isHtml = material.material_type === 'html' || material.material_type === 'interactive_html';
 
   const visConfig = {
     published: { label: 'Publicado', color: 'text-green-600 bg-green-50' },
@@ -606,7 +611,10 @@ function MaterialModal({ onClose, onSave, editingMaterial }: any) {
 
         const { error: uploadError } = await supabase.storage
           .from('course-materials')
-          .upload(filePath, file);
+          .upload(filePath, file, {
+            contentType: (material_type === 'html' || material_type === 'interactive_html') ? 'text/html' : undefined,
+            upsert: true
+          });
 
         if (uploadError) throw uploadError;
 
@@ -992,79 +1000,7 @@ function CreateActivityFromMaterial({ materialId, onSave, onClose }: { materialI
   );
 }
 
-function MaterialViewer({ material, onBack }: { material: CourseMaterial | undefined, onBack: () => void }) {
-  const [isFullscreen, setIsFullscreen] = useState(false);
-  const containerRef = useRef<HTMLDivElement>(null);
-
-  if (!material) return null;
-
-  const toggleFullscreen = () => {
-    if (!containerRef.current) return;
-    if (!document.fullscreenElement) {
-      containerRef.current.requestFullscreen().catch(err => {
-        console.error(`Error attempting to enable full-screen mode: ${err.message}`);
-      });
-      setIsFullscreen(true);
-    } else {
-      document.exitFullscreen();
-      setIsFullscreen(false);
-    }
-  };
-
-  return (
-    <div className="h-[calc(100vh-120px)] flex flex-col animate-in fade-in slide-in-from-bottom-4 duration-500">
-      <div className="flex items-center justify-between mb-6">
-        <div className="flex items-center gap-4">
-          <button onClick={onBack} className="p-2 hover:bg-white rounded-full text-slate-400 group/back">
-            <ChevronLeft className="w-6 h-6 group-hover/back:-translate-x-1 transition-transform" />
-          </button>
-          <div>
-            <h1 className="text-2xl font-bold text-slate-900">{material.title}</h1>
-            <p className="text-sm text-slate-500">{material.description || 'Simulador Interactivo'}</p>
-          </div>
-        </div>
-        <div className="flex gap-2">
-           <button 
-            onClick={toggleFullscreen}
-            className="bg-white border border-slate-200 text-slate-600 px-4 py-2 rounded-xl font-bold flex items-center gap-2 hover:bg-slate-50 transition-all shadow-sm"
-          >
-            <Maximize className="w-4 h-4" />
-            Pantalla Completa
-          </button>
-          <button 
-            onClick={onBack}
-            className="bg-slate-900 text-white px-6 py-2 rounded-xl font-bold hover:bg-slate-800 transition-all shadow-lg shadow-slate-200"
-          >
-            Salir
-          </button>
-        </div>
-      </div>
-
-      <div 
-        ref={containerRef}
-        className={cn(
-          "flex-1 bg-black rounded-[2.5rem] overflow-hidden border-8 border-slate-900/10 shadow-2xl relative group",
-          isFullscreen ? "rounded-none border-0" : ""
-        )}
-      >
-        <iframe 
-          src={material.file_url}
-          className="w-full h-full border-none bg-white"
-          title={material.title}
-          sandbox="allow-scripts allow-same-origin"
-          allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-          allowFullScreen
-        />
-        
-        {isFullscreen && (
-          <button 
-            onClick={toggleFullscreen}
-            className="absolute top-6 right-6 p-4 bg-slate-900/80 text-white rounded-2xl backdrop-blur-md opacity-0 group-hover:opacity-100 transition-opacity hover:bg-slate-800"
-          >
-            <ChevronLeft className="w-6 h-6 rotate-90" />
-          </button>
-        )}
-      </div>
-    </div>
-  );
+function MaterialViewerWrapper({ material, onBack }: { material: CourseMaterial | undefined, onBack: () => void }) {
+  // This is now replaced by the common component call above
+  return null;
 }
