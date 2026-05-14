@@ -82,7 +82,10 @@ export function StudentPortal() {
           supabase.from('rubric_criteria').select('*').eq('rubric_id', (await supabase.from('rubrics').select('id').eq('group_id', student.group_id).single()).data?.id),
           supabase.from('activities').select('*').eq('group_id', student.group_id).eq('status', 'active'),
           supabase.from('submissions').select('*').eq('student_id', student.id),
-          supabase.from('attendance_records').select('*, attendance_sessions!inner(date, group_id)').eq('student_id', student.id).eq('attendance_sessions.group_id', student.group_id),
+          supabase.from('attendance_records')
+            .select('id, status, value, student_id, attendance_sessions!inner(id, date, group_id)')
+            .eq('student_id', student.id)
+            .eq('attendance_sessions.group_id', student.group_id),
           supabase.from('course_materials').select('*').eq('group_id', student.group_id).eq('visibility', 'published')
         ]);
 
@@ -110,13 +113,13 @@ export function StudentPortal() {
   };
 
   useEffect(() => {
-    if (portalData?.attendance) {
+    if (portalData) {
       applyAttendanceFilter();
     }
   }, [portalData, attFilterType, selectedMonth, selectedYear, selectedQuarter, customRange]);
 
   const applyAttendanceFilter = () => {
-    const { attendance } = portalData;
+    const attendance = portalData?.attendance || [];
     let startDate: string | null = null;
     let endDate: string | null = null;
     let periodLabel = 'Historial completo';
@@ -137,11 +140,34 @@ export function StudentPortal() {
       periodLabel = `${startDate || '?'} al ${endDate || '?'}`;
     }
 
-    const filtered = attendance.filter((a: any) => {
-      if (!startDate || !endDate) return true;
-      const sessionDate = a.attendance_sessions?.date;
-      return sessionDate >= startDate && sessionDate <= endDate;
-    }).sort((a: any, b: any) => b.attendance_sessions.date.localeCompare(a.attendance_sessions.date));
+    const filtered = (attendance || [])
+      .filter((a: any) => {
+        // Defensive check for attendance_sessions, which could be an object or an array depending on Supabase interpretation
+        const session = Array.isArray(a?.attendance_sessions) ? a.attendance_sessions[0] : a?.attendance_sessions;
+        return a && session && session.date;
+      })
+      .filter((a: any) => {
+        if (!startDate || !endDate) return true;
+        const session = Array.isArray(a.attendance_sessions) ? a.attendance_sessions[0] : a.attendance_sessions;
+        const sessionDate = session?.date;
+        return sessionDate && sessionDate >= startDate && sessionDate <= endDate;
+      })
+      .sort((a: any, b: any) => {
+        const sessionA = Array.isArray(a.attendance_sessions) ? a.attendance_sessions[0] : a.attendance_sessions;
+        const sessionB = Array.isArray(b.attendance_sessions) ? b.attendance_sessions[0] : b.attendance_sessions;
+        const dateA = sessionA?.date || '';
+        const dateB = sessionB?.date || '';
+        return dateB.localeCompare(dateA);
+      });
+
+    // Normalized records for the UI
+    const normalizedRecords = filtered.map(a => {
+      const session = Array.isArray(a.attendance_sessions) ? a.attendance_sessions[0] : a.attendance_sessions;
+      return {
+        ...a,
+        attendance_sessions: session // Ensure it's an object in the component state
+      };
+    });
 
     const total = filtered.length;
     const present = filtered.filter((r: any) => r.status === 'present').length;
@@ -153,7 +179,7 @@ export function StudentPortal() {
     const percentage = total > 0 ? (valueSum / total) * 100 : 100;
 
     setAttendanceReport({
-      records: filtered,
+      records: normalizedRecords,
       present,
       absent,
       late,
@@ -477,10 +503,14 @@ export function StudentPortal() {
                         {attendanceReport.records.map((r, i) => (
                           <tr key={i} className="hover:bg-slate-50 transition-colors">
                             <td className="px-8 py-4">
-                               <p className="font-bold text-slate-900">{formatLocalDate(r.attendance_sessions.date, "d 'de' MMMM, yyyy")}</p>
+                               <p className="font-bold text-slate-900">
+                                 {r.attendance_sessions?.date ? formatLocalDate(r.attendance_sessions.date, "d 'de' MMMM, yyyy") : 'Sin fecha'}
+                               </p>
                             </td>
                             <td className="px-8 py-4">
-                               <p className="text-sm font-bold text-slate-500 capitalize">{formatLocalDate(r.attendance_sessions.date, "EEEE")}</p>
+                               <p className="text-sm font-bold text-slate-500 capitalize">
+                                 {r.attendance_sessions?.date ? formatLocalDate(r.attendance_sessions.date, "EEEE") : '-'}
+                               </p>
                             </td>
                             <td className="px-8 py-4 text-center">
                                <span className={cn(
@@ -506,8 +536,12 @@ export function StudentPortal() {
                       {attendanceReport.records.map((r, i) => (
                         <div key={i} className="p-6 flex items-center justify-between">
                            <div>
-                              <p className="font-bold text-slate-900">{formatLocalDate(r.attendance_sessions.date, "d 'de' MMM")}</p>
-                              <p className="text-[10px] font-bold text-slate-400 uppercase">{formatLocalDate(r.attendance_sessions.date, "EEEE")}</p>
+                              <p className="font-bold text-slate-900">
+                                {r.attendance_sessions?.date ? formatLocalDate(r.attendance_sessions.date, "d 'de' MMM") : 'Sin fecha'}
+                              </p>
+                              <p className="text-[10px] font-bold text-slate-400 uppercase">
+                                {r.attendance_sessions?.date ? formatLocalDate(r.attendance_sessions.date, "EEEE") : '-'}
+                              </p>
                            </div>
                            <div className="flex items-center gap-3">
                               <span className={cn(
@@ -528,7 +562,11 @@ export function StudentPortal() {
                 ) : (
                   <div className="p-12 text-center">
                     <Calendar className="w-12 h-12 text-slate-200 mx-auto mb-4" />
-                    <p className="text-slate-500 font-bold">No hay registros para este periodo.</p>
+                    <p className="text-slate-500 font-bold">
+                      {portalData?.attendance?.length > 0 
+                        ? "No hay registros para el periodo seleccionado." 
+                        : "No hay asistencias registradas todavía."}
+                    </p>
                   </div>
                 )}
              </div>
