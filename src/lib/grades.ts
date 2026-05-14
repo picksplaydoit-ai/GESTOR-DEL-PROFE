@@ -1,4 +1,5 @@
 import { Student, Activity, Submission, RubricCriterion, Rubric, AttendanceStatus } from '../types';
+import { calculateStudentAttendance } from './attendance';
 
 export interface StudentGradeResult {
   student: Student;
@@ -64,14 +65,12 @@ export function calculateGrades(
 
     // 3. Attendance Calculation
     const studentAttendance = attendanceRecords[student.id] || [];
-    const attendanceTotal = studentAttendance.length;
-    const attendancePresent = studentAttendance.reduce((sum, r) => sum + r.value, 0);
-    const attendancePercentage = attendanceTotal > 0 ? (attendancePresent / attendanceTotal) * 100 : 100;
+    const attendanceVal = calculateStudentAttendance(studentAttendance);
 
     // 4. Status determination
     let status: 'APROBADO' | 'REPROBADO' | 'SD' = 'APROBADO';
     
-    if (attendancePercentage < (rubric.min_attendance || 80)) {
+    if (attendanceVal.attendancePercentage < (rubric.min_attendance || 80)) {
       status = 'SD';
     } else if (finalGrade < (rubric.min_grade || 60)) {
       status = 'REPROBADO';
@@ -83,9 +82,9 @@ export function calculateGrades(
       activeWeightSum,
       weightedScore: weightedSum / 100, // For legacy internal tracking if needed
       finalGrade,
-      attendanceTotal,
-      attendancePresent,
-      attendancePercentage,
+      attendanceTotal: attendanceVal.totalClasses,
+      attendancePresent: attendanceVal.attendancePoints,
+      attendancePercentage: attendanceVal.attendancePercentage,
       status
     };
   });

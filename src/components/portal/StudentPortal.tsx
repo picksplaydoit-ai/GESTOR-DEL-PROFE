@@ -18,6 +18,7 @@ import {
   Search
 } from 'lucide-react';
 import { calculateGrades, StudentGradeResult } from '../../lib/grades';
+import { calculateStudentAttendance, AttendanceMetrics } from '../../lib/attendance';
 import { cn, formatGrade } from '../../lib/utils';
 import { Student, Group, Rubric, RubricCriterion, Activity, Submission, CourseMaterial, AttendanceStatus } from '../../types';
 import { formatLocalDate, getMonthName, getMonthRange, getQuarterRange } from '../../lib/date';
@@ -171,23 +172,16 @@ export function StudentPortal() {
       };
     });
 
-    const total = filtered.length;
-    const present = filtered.filter((r: any) => r.status === 'present').length;
-    const late = filtered.filter((r: any) => r.status === 'late').length;
-    const justified = filtered.filter((r: any) => r.status === 'justified').length;
-    const absent = filtered.filter((r: any) => r.status === 'absent').length;
-
-    const valueSum = filtered.reduce((sum: number, r: any) => sum + r.value, 0);
-    const percentage = total > 0 ? (valueSum / total) * 100 : 100;
+    const metrics = calculateStudentAttendance(normalizedRecords);
 
     setAttendanceReport({
       records: normalizedRecords,
-      present,
-      absent,
-      late,
-      justified,
-      total,
-      percentage,
+      present: metrics.presentCount,
+      absent: metrics.absentCount,
+      late: metrics.lateCount,
+      justified: metrics.justifiedCount,
+      total: metrics.totalClasses,
+      percentage: metrics.attendancePercentage,
       periodLabel
     });
   };
@@ -337,10 +331,16 @@ export function StudentPortal() {
 
            <div className="bg-white p-8 rounded-[2rem] border border-slate-200 shadow-sm relative overflow-hidden">
               <div className="absolute top-0 right-0 w-24 h-24 bg-green-50 rounded-bl-[4rem] -mr-8 -mt-8 opacity-50" />
-              <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] mb-4">Asistencia</p>
+              <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] mb-4">Asistencia Global</p>
               <div className="flex items-baseline gap-2">
-                 <h3 className="text-5xl font-black text-green-600">{Math.round(grades?.attendancePercentage || 0)}%</h3>
-                 <p className="text-xs font-bold text-slate-400">{grades?.attendancePresent}/{grades?.attendanceTotal} Clases</p>
+                 {portalData?.attendance?.length > 0 ? (
+                   <>
+                    <h3 className="text-5xl font-black text-green-600">{Math.round(grades?.attendancePercentage || 0)}%</h3>
+                    <p className="text-xs font-bold text-slate-400">{grades?.attendancePresent}/{grades?.attendanceTotal} Clases</p>
+                   </>
+                 ) : (
+                   <h3 className="text-xl font-black text-slate-400">Sin registros</h3>
+                 )}
               </div>
            </div>
 
@@ -472,7 +472,7 @@ export function StudentPortal() {
              </div>
              <div className="bg-white p-4 rounded-3xl border border-slate-100 shadow-sm text-center">
                 <p className="text-[10px] font-black text-green-500 uppercase mb-1">Asistencias</p>
-                <p className="text-xl font-black text-green-600">{attendanceReport.present}</p>
+                <p className="text-xl font-black text-green-600">{attendanceReport.present + attendanceReport.justified}</p>
              </div>
              <div className="bg-white p-4 rounded-3xl border border-slate-100 shadow-sm text-center">
                 <p className="text-[10px] font-black text-red-500 uppercase mb-1">Faltas</p>
@@ -483,8 +483,13 @@ export function StudentPortal() {
                 <p className="text-xl font-black text-amber-600">{attendanceReport.late}</p>
              </div>
              <div className="bg-white p-4 rounded-3xl border border-slate-100 shadow-sm text-center hidden md:block">
-                <p className="text-[10px] font-black text-blue-500 uppercase mb-1">Periodo %</p>
-                <p className="text-xl font-black text-blue-600">{Math.round(attendanceReport.percentage)}%</p>
+                <p className="text-[10px] font-black text-blue-500 uppercase mb-1">Asistencia Periodo</p>
+                <div className="flex flex-col items-center">
+                  <p className="text-xl font-black text-blue-600">
+                    {attendanceReport.total > 0 ? `${Math.round(attendanceReport.percentage)}%` : '-'}
+                  </p>
+                  <p className="text-[8px] font-bold text-slate-400 uppercase tracking-tighter">del filtro actual</p>
+                </div>
              </div>
           </div>
 
