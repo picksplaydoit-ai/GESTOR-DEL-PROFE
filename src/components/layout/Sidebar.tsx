@@ -26,12 +26,14 @@ export function Sidebar() {
   const globalMenuItems = [
     { id: 'dashboard', label: 'Dashboard General', icon: LayoutDashboard },
     { id: 'groups', label: 'Mis Grupos', icon: GraduationCap },
+    { id: 'questions', label: 'Banco de Preguntas', icon: BookOpen },
     { id: 'settings', label: 'Configuración', icon: Settings },
   ];
 
   const groupMenuItems = [
     { id: 'dashboard', label: 'Resumen', icon: LayoutDashboard },
     { id: 'students', label: 'Alumnos', icon: Users },
+    { id: 'exams', label: 'Exámenes', icon: FileText },
     { id: 'rubrics', label: 'Rúbrica', icon: Scale },
     { id: 'planning', label: 'Planeación', icon: BookOpen },
     { id: 'activities', label: 'Actividades', icon: FileText },

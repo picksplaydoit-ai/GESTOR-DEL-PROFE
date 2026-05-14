@@ -23,6 +23,7 @@ import { cn, formatGrade } from '../../lib/utils';
 import { Student, Group, Rubric, RubricCriterion, Activity, Submission, CourseMaterial, AttendanceStatus } from '../../types';
 import { formatLocalDate, getMonthName, getMonthRange, getQuarterRange } from '../../lib/date';
 import { MaterialViewer } from '../common/MaterialViewer';
+import { ExamTakingUI } from './ExamTakingUI';
 
 export function StudentPortal() {
   const [loading, setLoading] = useState(false);
@@ -32,6 +33,7 @@ export function StudentPortal() {
   const [portalData, setPortalData] = useState<any>(null);
   const [grades, setGrades] = useState<StudentGradeResult | null>(null);
   const [selectedMaterial, setSelectedMaterial] = useState<CourseMaterial | null>(null);
+  const [activeExam, setActiveExam] = useState<any>(null);
 
   // Attendance Filters
   const [attFilterType, setAttFilterType] = useState<'all' | 'month' | 'quarter' | 'range'>('all');
@@ -79,17 +81,19 @@ export function StudentPortal() {
         }
 
         // Si encontramos al alumno, traemos todo lo demás
-        const [group, rubricRes, criteria, activities, submissions, attendance, materials] = await Promise.all([
+        const [group, rubricRes, criteria, activities, submissions, attendance, materials, exams, attempts] = await Promise.all([
           supabase.from('groups').select('*').eq('id', student.group_id).single(),
           supabase.from('rubrics').select('*').eq('group_id', student.group_id).single(),
           supabase.from('rubric_criteria').select('*').eq('rubric_id', (await supabase.from('rubrics').select('id').eq('group_id', student.group_id).single()).data?.id),
           supabase.from('activities').select('*').eq('group_id', student.group_id).eq('status', 'active'),
           supabase.from('submissions').select('*').eq('student_id', student.id),
           supabase.from('attendance_records')
-            .select('id, status, value, student_id, attendance_sessions!inner(id, date, group_id)')
+            .select('id, status, value, student_id, attendance_sessions(id, date, group_id)')
             .eq('student_id', student.id)
             .eq('attendance_sessions.group_id', student.group_id),
-          supabase.from('course_materials').select('*').eq('group_id', student.group_id).eq('visibility', 'published')
+          supabase.from('course_materials').select('*').eq('group_id', student.group_id).eq('visibility', 'published'),
+          supabase.from('exams').select('*').eq('group_id', student.group_id).eq('status', 'published'),
+          supabase.from('exam_attempts').select('*').eq('student_id', student.id)
         ]);
 
         const fullData = {
@@ -100,7 +104,9 @@ export function StudentPortal() {
           activities: activities.data,
           submissions: submissions.data,
           attendance: attendance.data,
-          materials: materials.data
+          materials: materials.data,
+          exams: exams.data,
+          attempts: attempts.data
         };
         setPortalData(fullData);
       } else if (!data) {
@@ -143,39 +149,36 @@ export function StudentPortal() {
       periodLabel = `${startDate || '?'} al ${endDate || '?'}`;
     }
 
-    const filtered = (attendance || [])
-      .filter((a: any) => {
-        // Defensive check for attendance_sessions, which could be an object or an array depending on Supabase interpretation
-        const session = Array.isArray(a?.attendance_sessions) ? a.attendance_sessions[0] : a?.attendance_sessions;
-        return a && session && session.date;
-      })
-      .filter((a: any) => {
-        if (!startDate || !endDate) return true;
-        const session = Array.isArray(a.attendance_sessions) ? a.attendance_sessions[0] : a.attendance_sessions;
-        const sessionDate = session?.date;
-        return sessionDate && sessionDate >= startDate && sessionDate <= endDate;
-      })
-      .sort((a: any, b: any) => {
-        const sessionA = Array.isArray(a.attendance_sessions) ? a.attendance_sessions[0] : a.attendance_sessions;
-        const sessionB = Array.isArray(b.attendance_sessions) ? b.attendance_sessions[0] : b.attendance_sessions;
-        const dateA = sessionA?.date || '';
-        const dateB = sessionB?.date || '';
-        return dateB.localeCompare(dateA);
-      });
-
-    // Normalized records for the UI
-    const normalizedRecords = filtered.map(a => {
+    // 1. First normalize all records
+    const normalizedAll = (attendance || []).map((a: any) => {
       const session = Array.isArray(a.attendance_sessions) ? a.attendance_sessions[0] : a.attendance_sessions;
       return {
         ...a,
-        attendance_sessions: session // Ensure it's an object in the component state
+        attendance_sessions: session // Ensure it's an object
       };
     });
 
-    const metrics = calculateStudentAttendance(normalizedRecords);
+    // 2. Filter based on type
+    const filtered = normalizedAll.filter((a: any) => {
+      // If "All", we don't filter by date presence
+      if (attFilterType === 'all') return true;
+
+      // For specific filters, we MUST have a date
+      const sessionDate = a.attendance_sessions?.date;
+      if (!sessionDate) return false;
+
+      if (!startDate || !endDate) return true;
+      return sessionDate >= startDate && sessionDate <= endDate;
+    }).sort((a: any, b: any) => {
+      const dateA = a.attendance_sessions?.date || '';
+      const dateB = b.attendance_sessions?.date || '';
+      return dateB.localeCompare(dateA);
+    });
+
+    const metrics = calculateStudentAttendance(filtered);
 
     setAttendanceReport({
-      records: normalizedRecords,
+      records: filtered,
       present: metrics.presentCount,
       absent: metrics.absentCount,
       late: metrics.lateCount,
@@ -312,7 +315,22 @@ export function StudentPortal() {
         </div>
       </div>
 
-      <div className="max-w-4xl mx-auto px-6 mt-8 space-y-8">
+      <div className="max-w-4xl mx-auto px-6 mt-8 space-y-8 relative">
+        {activeExam && (
+           <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-md z-[100] flex items-center justify-center p-4">
+             <div className="w-full max-w-5xl h-full md:h-[90vh]">
+                <ExamTakingUI 
+                  exam={activeExam} 
+                  student={student} 
+                  onComplete={() => {
+                    setActiveExam(null);
+                    handleLogin({ preventDefault: () => {} } as any);
+                  }} 
+                />
+             </div>
+           </div>
+        )}
+
         {/* Main Stats */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
            <div className="bg-white p-8 rounded-[2rem] border border-slate-200 shadow-sm relative overflow-hidden">
@@ -577,6 +595,92 @@ export function StudentPortal() {
                   </div>
                 )}
              </div>
+          </div>
+        </section>
+
+        {/* Exams Section */}
+        <section>
+          <div className="flex items-center gap-3 mb-6">
+            <FileText className="w-5 h-5 text-blue-600" />
+            <h3 className="text-xl font-black text-slate-900">Exámenes Disponibles</h3>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {portalData.exams && portalData.exams.length > 0 ? (
+              portalData.exams.map((exam: any) => {
+                const attemptCount = portalData.attempts?.filter((a: any) => a.exam_id === exam.id && a.status === 'completed').length || 0;
+                const bestAttempt = portalData.attempts
+                  ?.filter((a: any) => a.exam_id === exam.id && a.status === 'completed')
+                  .sort((a: any, b: any) => (b.score || 0) - (a.score || 0))[0];
+                
+                const isClosed = new Date(exam.close_date) < new Date();
+                const canAttempt = attemptCount < exam.attempts_allowed && !isClosed;
+
+                return (
+                  <div key={exam.id} className="bg-white p-6 rounded-[2.5rem] border border-slate-200 shadow-sm relative overflow-hidden group">
+                    {isClosed && (
+                      <div className="absolute top-4 right-4 bg-slate-100 text-slate-400 px-2 py-1 rounded-full text-[8px] font-black uppercase">Cerrado</div>
+                    )}
+                    <div className="flex items-start gap-4 mb-6">
+                      <div className={cn(
+                        "w-12 h-12 rounded-2xl flex items-center justify-center shrink-0 transition-colors",
+                        canAttempt ? "bg-blue-50 text-blue-600" : "bg-slate-50 text-slate-300"
+                      )}>
+                        <FileText className="w-6 h-6" />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <h4 className="font-bold text-slate-900 group-hover:text-blue-600 transition-colors truncate">{exam.title}</h4>
+                        <div className="flex items-center gap-3 mt-1">
+                           <span className="text-[10px] font-black text-slate-400 uppercase flex items-center gap-1">
+                             <Clock className="w-3 h-3" />
+                             {exam.time_limit || 'Sin límite'} min
+                           </span>
+                           <span className="text-[10px] font-black text-slate-400 uppercase">
+                             {attemptCount}/{exam.attempts_allowed} Intentos
+                           </span>
+                        </div>
+                      </div>
+                    </div>
+
+                    {bestAttempt && (
+                      <div className="bg-blue-50/50 p-4 rounded-2xl border border-blue-100 mb-6 flex items-center justify-between">
+                         <div className="flex flex-col">
+                            <span className="text-[8px] font-black text-blue-400 uppercase tracking-widest">Mejor Puntaje</span>
+                            <span className="text-xl font-black text-blue-600">{bestAttempt.score} pts</span>
+                         </div>
+                         <div className="text-right">
+                            <span className="text-[8px] font-black text-blue-400 uppercase tracking-widest">Estado</span>
+                            <span className="text-xs font-black text-green-600 block">Completado</span>
+                         </div>
+                      </div>
+                    )}
+
+                    <button 
+                      onClick={() => setActiveExam(exam)}
+                      disabled={!canAttempt}
+                      className={cn(
+                        "w-full py-4 rounded-2xl font-black text-sm transition-all flex items-center justify-center gap-2",
+                        canAttempt 
+                          ? "bg-slate-900 text-white hover:bg-slate-800 shadow-lg shadow-slate-200" 
+                          : "bg-slate-50 text-slate-300 cursor-not-allowed"
+                      )}
+                    >
+                      {canAttempt ? (
+                        <>
+                          <ChevronRight className="w-4 h-4" />
+                          Iniciar Examen
+                        </>
+                      ) : (
+                        isClosed ? 'Examen Finalizado' : 'Sin Intentos Disponibles'
+                      )}
+                    </button>
+                  </div>
+                );
+              })
+            ) : (
+              <div className="col-span-full bg-slate-50 p-12 rounded-[2rem] text-center border-2 border-dashed border-slate-200">
+                <p className="text-slate-400 font-bold italic">No hay exámenes programados para este grupo.</p>
+              </div>
+            )}
           </div>
         </section>
 
